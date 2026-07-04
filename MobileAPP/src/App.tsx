@@ -9,11 +9,12 @@ import BottomNav from './components/BottomNav';
 import ConnectionSettings from './components/ConnectionSettings';
 import AutoPilotPanel from './components/AutoPilotPanel';
 import DataDashboard from './components/DataDashboard';
+import DiagnosticsPanel from './components/DiagnosticsPanel';
 import { useRobotConnection } from './lib/useRobotConnection';
 import IndividualWheelControl from './components/IndividualWheelControl';
 
 export default function App() {
-  type ActiveTab = 'drive' | 'auto' | 'data' | 'config';
+  type ActiveTab = 'drive' | 'auto' | 'diagnostics' | 'data' | 'config';
   type ConnectionMode = 'direct' | 'relay';
   type ControlMode = 'joystick' | 'buttons';
 
@@ -23,9 +24,6 @@ export default function App() {
       const saved = localStorage.getItem('robot_control_mode') as ControlMode;
       return (saved === 'joystick' || saved === 'buttons') ? saved : 'joystick';
     },
-  );
-  const [connectionMode, setConnectionMode] = useState<ConnectionMode>(
-    () => (localStorage.getItem('robot_connection_mode') as ConnectionMode) || 'direct',
   );
   const [directUrl, setDirectUrl] = useState(
     () => localStorage.getItem('robot_direct_url') || 'ws://192.168.1.100:81',
@@ -37,30 +35,14 @@ export default function App() {
     () => parseInt(localStorage.getItem('robot_max_speed') || '255', 10),
   );
 
-  const activeUrl = connectionMode === 'direct' ? directUrl : relayUrl;
-  const robot = useRobotConnection(activeUrl);
+  const robot = useRobotConnection(directUrl, relayUrl);
 
-  const handleConnect = (url: string, mode: ConnectionMode) => {
-    if (mode === 'direct') {
-      setDirectUrl(url);
-      localStorage.setItem('robot_direct_url', url);
-    } else {
-      setRelayUrl(url);
-      localStorage.setItem('robot_relay_url', url);
-    }
-    // Updating connectionMode changes activeUrl, which triggers useRobotConnection's
-    // useEffect([url]) to disconnect from the old WS and connect to the new one.
-    setConnectionMode(mode);
-    localStorage.setItem('robot_connection_mode', mode);
+  const handleConnect = () => {
+    robot.connect();
   };
 
   const handleDisconnect = () => {
     robot.disconnect();
-  };
-
-  const handleModeChange = (mode: ConnectionMode) => {
-    setConnectionMode(mode);
-    localStorage.setItem('robot_connection_mode', mode);
   };
 
   const handleDirectUrlChange = (url: string) => {
@@ -210,6 +192,19 @@ export default function App() {
           </>
         )}
 
+        {activeTab === 'diagnostics' && (
+          <>
+            <MasterStatus connected={robot.connected} robotReady={robot.robotReady} lastError={robot.lastError} />
+            <DiagnosticsPanel
+              connected={robot.connected}
+              robotReady={robot.robotReady}
+              sendCommand={robot.sendCommand}
+              lastDiagLine={robot.lastDiagLine}
+              setLastDiagLine={robot.setLastDiagLine}
+            />
+          </>
+        )}
+
         {activeTab === 'config' && (
           <ConnectionSettings
             directUrl={directUrl}
@@ -223,6 +218,9 @@ export default function App() {
             onDisconnect={handleDisconnect}
             onDirectUrlChange={handleDirectUrlChange}
             onRelayUrlChange={handleRelayUrlChange}
+            connectionMode={robot.connectionMode}
+            isConnecting={robot.isConnecting}
+            currentAttemptMode={robot.currentAttemptMode}
           />
         )}
       </main>

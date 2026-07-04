@@ -45,6 +45,7 @@ constexpr const char* CMD_MPU_OFF = "MPU_OFF";
 constexpr const char* CMD_MPU_REQ = "MPU_REQ";
 constexpr const char* CMD_MPU_CFG_PREFIX = "MPU_CFG:";
 constexpr const char* CMD_WARN_DIST_PREFIX = "WARN_DIST:";
+constexpr const char* CMD_DIAG_START = "DIAG_START";
 
 // --- Protocol tokens (Mega feedback) ---
 constexpr const char* MSG_RDY = "RDY";
@@ -74,11 +75,12 @@ enum class EspState : uint8_t {
 };
 
 static EspState espState = EspState::OFF;
+static bool appConnected = false;
 
 static void setState(EspState next) {
   if (espState == next) return;
   espState = next;
-  if (ENABLE_STATE_LOG) {
+  if (ENABLE_STATE_LOG && appConnected) {
     Serial.printf("[ESP][STATE] %s\n", (next == EspState::RUNNING) ? "RUNNING" : (next == EspState::IDLE) ? "IDLE" : "INIT");
   }
 }
@@ -109,16 +111,16 @@ static int pendingMaxSpeed = -1;
 static bool ipLoggedAfterConnect = false;
 
 static void printNetworkIdentity(const char* tag) {
-  Serial.print(F("[ESP][NET] "));
-  Serial.print(tag);
-  Serial.print(F(" SSID="));
-  Serial.print(WIFI_SSID);
-  Serial.print(F(" IP="));
-  Serial.println(WiFi.localIP());
-  Serial.print(F("[ESP][NET] WS URL: ws://"));
+  Serial.println();
+  Serial.println(F("=================================================="));
+  Serial.print(F("[DIRECT MODE] URL: ws://"));
   Serial.print(WiFi.localIP());
   Serial.print(':');
   Serial.println(APP_WS_PORT);
+  Serial.print(F("[RELAY MODE]  IP:  "));
+  Serial.println(WiFi.localIP());
+  Serial.println(F("=================================================="));
+  Serial.println();
 }
 
 // =============================================================
@@ -136,8 +138,10 @@ static String normalizeMegaLine(const String& raw) {
 static void sendMega(const String& msg) {
   Serial2.println(msg);
   txLines++;
-  Serial.print(F("[ESP][TX] "));
-  Serial.println(msg);
+  if (appConnected) {
+    Serial.print(F("[ESP][TX] "));
+    Serial.println(msg);
+  }
 }
 
 static void sendWsToClient(uint8_t clientId, const String& frame) {
@@ -217,6 +221,24 @@ static void handleRobotCommandFromApp(const String& line, uint8_t clientId) {
     sendWsToClient(clientId, "ACK:START_PENDING");
     return;
   }
+  if (line == CMD_DIAG_START) {
+    sendMega(line);
+
+    bool wifiOk = (WiFi.status() == WL_CONNECTED);
+    long rssi = WiFi.RSSI();
+    uint32_t heap = ESP.getFreeHeap();
+
+    String espDiagResult = "DIAG_ESP:";
+    espDiagResult += wifiOk ? "WIFI=OK" : "WIFI=FAIL";
+    espDiagResult += ":RSSI=";
+    espDiagResult += String(rssi);
+    espDiagResult += "dBm:HEAP=";
+    espDiagResult += String(heap / 1024);
+    espDiagResult += "KB";
+
+    sendWsToClient(clientId, espDiagResult);
+    return;
+  }
   if (line.startsWith(CMD_MAX_SPD_PREFIX)) {
     int val = line.substring(8).toInt();
     if (val >= 0 && val <= 255) { pendingMaxSpeed = val; sendMega(line); }
@@ -273,6 +295,7 @@ static void handleRobotCommandFromApp(const String& line, uint8_t clientId) {
 
 static void onAppWsEvent(uint8_t clientId, WStype_t type, uint8_t* payload, size_t length) {
   if (type == WStype_CONNECTED) {
+    appConnected = true;
     sendWsToClient(clientId, isRunning() ? MSG_RDY : "ACK:CONNECTED");
   } else if (type == WStype_TEXT) {
     String text = "";
@@ -287,12 +310,7 @@ void setup() {
   delay(300);
   Serial2.begin(UART_BAUD, SERIAL_8N1, UART2_RX_PIN, UART2_TX_PIN);
 
-  // Apply static IP configuration before starting WiFi STA
-  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
-    Serial.println("[ESP][NET] Static IP Configuration Failed");
-  } else {
-    Serial.println("[ESP][NET] Static IP Configured Successfully: 192.168.1.100");
-  }
+  // DHCP mode is used automatically on Wi-Fi connection (WiFi.config bypassed)
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);

@@ -28,6 +28,7 @@ constexpr const char* CMD_MPU_OFF = "MPU_OFF";
 constexpr const char* CMD_MPU_REQ = "MPU_REQ";
 constexpr const char* CMD_MPU_CFG_PREFIX = "MPU_CFG:";
 constexpr const char* CMD_WARN_DIST_PREFIX = "WARN_DIST:";
+constexpr const char* CMD_DIAG_START = "DIAG_START";
 
 constexpr const char* MSG_RDY = "RDY";
 constexpr const char* MSG_RPM_PREFIX = "RPM:";
@@ -189,6 +190,8 @@ uint16_t distancesCm[4] = {0, 0, 0, 0};
 MegaState state = MegaState::OFF;
 String rxLine;
 bool rxOverflow = false;
+String rxUsbLine;
+bool rxUsbOverflow = false;
 uint32_t rxFrameCount = 0;
 
 unsigned long lastUltrasonicAt = 0;
@@ -1143,6 +1146,77 @@ bool parseMpuConfig(const String& line, uint16_t& accelThr, uint16_t& gyroThr, u
   return true;
 }
 
+void runDiagnostics() {
+  Serial.println("[MEGA][DIAG] Running Subsystems Self-Diagnostics...");
+
+  // 1. Signaling starting
+  activateHorn(); // Double beep
+  delay(100);
+  activateHorn();
+
+  // 2. MPU-6050 Check
+  bool mpuOk = false;
+  Wire.beginTransmission(0x68);
+  byte error = Wire.endTransmission();
+  if (error == 0) {
+    mpuOk = true;
+  }
+
+  // 3. Ultrasonic Sensors Check (Left, Front, Right, Back)
+  bool lUsOk = false, fUsOk = false, rUsOk = false, bUsOk = false;
+  uint16_t dL = readUltrasonic(TRIG_PINS[0], ECHO_PINS[0]); delay(30);
+  uint16_t dF = readUltrasonic(TRIG_PINS[1], ECHO_PINS[1]); delay(30);
+  uint16_t dR = readUltrasonic(TRIG_PINS[2], ECHO_PINS[2]); delay(30);
+  uint16_t dB = readUltrasonic(TRIG_PINS[3], ECHO_PINS[3]); delay(30);
+
+  if (dL > 0 && dL < 400) lUsOk = true;
+  if (dF > 0 && dF < 400) fUsOk = true;
+  if (dR > 0 && dR < 400) rUsOk = true;
+  if (dB > 0 && dB < 400) bUsOk = true;
+
+  // 4. Motors and Encoders Check (Wiggle Test)
+  bool lMotOk = false, rMotOk = false;
+  bool lEncOk = false, rEncOk = false;
+
+  long startLeftTicks = leftTicks;
+  setLeftMotors(90);
+  delay(180);
+  setLeftMotors(0);
+  delay(50);
+  long diffL = abs(leftTicks - startLeftTicks);
+  if (diffL > 0) {
+    lMotOk = true;
+    lEncOk = true;
+  }
+
+  long startRightTicks = rightTicks;
+  setRightMotors(90);
+  delay(180);
+  setRightMotors(0);
+  delay(50);
+  long diffR = abs(rightTicks - startRightTicks);
+  if (diffR > 0) {
+    rMotOk = true;
+    rEncOk = true;
+  }
+
+  // 5. Build and transmit status payload
+  String result = "DIAG_RESULT:";
+  result += mpuOk ? "IMU=OK" : "IMU=FAIL";
+  result += lUsOk ? ":L_US=OK" : ":L_US=FAIL";
+  result += fUsOk ? ":F_US=OK" : ":F_US=FAIL";
+  result += rUsOk ? ":R_US=OK" : ":R_US=FAIL";
+  result += bUsOk ? ":B_US=OK" : ":B_US=FAIL";
+  result += lMotOk ? ":L_MOT=OK" : ":L_MOT=FAIL";
+  result += rMotOk ? ":R_MOT=OK" : ":R_MOT=FAIL";
+  result += lEncOk ? ":L_ENC=OK" : ":L_ENC=FAIL";
+  result += rEncOk ? ":R_ENC=OK" : ":R_ENC=FAIL";
+
+  Serial2.println(result);
+  Serial.print("[MEGA][DIAG] Result sent: ");
+  Serial.println(result);
+}
+
 void handleCommand(const String& line) {
   Serial.print("[MEGA][RX2][CMD] ");
   Serial.println(line);
@@ -1157,6 +1231,11 @@ void handleCommand(const String& line) {
     } else {
       startSession();
     }
+    return;
+  }
+
+  if (line == CMD_DIAG_START) {
+    runDiagnostics();
     return;
   }
 
@@ -1532,6 +1611,7 @@ void handleCommand(const String& line) {
 }
 
 void readUartCommands() {
+  // 1. Read from Serial2 (ESP32)
   while (Serial2.available() > 0) {
     const char c = static_cast<char>(Serial2.read());
     if (c == '\r') {
@@ -1566,6 +1646,43 @@ void readUartCommands() {
       rxLine += c;
     } else {
       rxOverflow = true;
+    }
+  }
+
+  // 2. Read from Serial (USB Port)
+  while (Serial.available() > 0) {
+    const char c = static_cast<char>(Serial.read());
+    if (c == '\r') {
+      continue;
+    }
+    if (c == '\n') {
+      if (rxUsbOverflow) {
+        Serial.println("[MEGA][ERR] LINE_TOO_LONG (USB)");
+        rxUsbOverflow = false;
+        rxUsbLine = "";
+        continue;
+      }
+
+      if (rxUsbLine.length() > 0) {
+        rxFrameCount++;
+        Serial.print("[MEGA][USB][RAW #");
+        Serial.print(rxFrameCount);
+        Serial.print("] ");
+        Serial.println(rxUsbLine);
+        handleCommand(rxUsbLine);
+        rxUsbLine = "";
+      }
+      continue;
+    }
+
+    if (rxUsbOverflow) {
+      continue;
+    }
+
+    if (rxUsbLine.length() < UART_LINE_MAX) {
+      rxUsbLine += c;
+    } else {
+      rxUsbOverflow = true;
     }
   }
 }

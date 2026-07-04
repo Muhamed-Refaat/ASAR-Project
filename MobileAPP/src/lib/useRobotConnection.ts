@@ -21,9 +21,10 @@ function pushEvent(arr: RobotEvent[], event: RobotEvent): RobotEvent[] {
   return [...arr.slice(-(LOG_LIMIT - 1)), event];
 }
 
-export function useRobotConnection(url: string) {
+export function useRobotConnection(directUrl: string, relayUrl: string) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const eventSeqRef = useRef(1);
   const obstacleWarnAtRef = useRef(0);
@@ -39,6 +40,11 @@ export function useRobotConnection(url: string) {
   const [distBack, setDistBack] = useState(0);
   const lastDistRef = useRef({ l: 0, f: 0, r: 0, b: 0 });
 
+  // Custom Automated Connection State Machine
+  const [connectionMode, setConnectionMode] = useState<'idle' | 'direct' | 'relay'>('idle');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [currentAttemptMode, setCurrentAttemptMode] = useState<'idle' | 'direct' | 'relay'>('idle');
+
   const [lastError, setLastError] = useState('');
   const [maxSpeedAck, setMaxSpeedAck] = useState<number | null>(null);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
@@ -52,6 +58,7 @@ export function useRobotConnection(url: string) {
   const [rpmRightHistory, setRpmRightHistory] = useState<{ val: number }[]>([]);
   const [minDistanceHistory, setMinDistanceHistory] = useState<{ val: number }[]>([]);
   const [autopilotRiskHistory, setAutopilotRiskHistory] = useState<{ val: number }[]>([]);
+  const [lastDiagLine, setLastDiagLine] = useState('');
   const [messageCount, setMessageCount] = useState(0);
   const [connectionStartedAt, setConnectionStartedAt] = useState<number | null>(null);
   const [eventLog, setEventLog] = useState<RobotEvent[]>([]);
@@ -73,55 +80,162 @@ export function useRobotConnection(url: string) {
       clearTimeout(reconnectRef.current);
       reconnectRef.current = null;
     }
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
     if (wsRef.current) {
       wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
       wsRef.current.close();
       wsRef.current = null;
     }
     if (mountedRef.current) {
       setConnected(false);
       setRobotReady(false);
+      setConnectionMode('idle');
+      setIsConnecting(false);
+      setCurrentAttemptMode('idle');
     }
   }, []);
 
   const connect = useCallback(() => {
-    if (!url || !mountedRef.current) return;
-    if (
-      wsRef.current &&
-      (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
+    if (!mountedRef.current) return;
+
+    if (reconnectRef.current) clearTimeout(reconnectRef.current);
+    if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.close();
+      wsRef.current = null;
     }
 
+    setIsConnecting(true);
+    setConnectionMode('idle');
+    setConnected(false);
+    setRobotReady(false);
+
+    // Phase 1: Try Direct connection
+    setCurrentAttemptMode('direct');
+    addEvent('info', 'AUTO', `[Direct Attempt] Probing direct IP: ${directUrl}...`);
+
     try {
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
+      const wsDirect = new WebSocket(directUrl);
+      wsRef.current = wsDirect;
 
-      ws.onopen = () => {
-        if (!mountedRef.current) return;
+      connectTimeoutRef.current = setTimeout(() => {
+        if (wsRef.current === wsDirect && wsDirect.readyState !== WebSocket.OPEN) {
+          addEvent('warn', 'AUTO', `[Direct Timeout] Connection to ${directUrl} timed out.`);
+          wsDirect.onclose = null;
+          wsDirect.onerror = null;
+          wsDirect.close();
+          tryRelayFallback();
+        }
+      }, 2500);
+
+      wsDirect.onopen = () => {
+        if (!mountedRef.current || wsRef.current !== wsDirect) return;
+        if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+
         setConnected(true);
+        setConnectionMode('direct');
+        setIsConnecting(false);
+        setCurrentAttemptMode('idle');
         setConnectionStartedAt(Date.now());
-        addEvent('info', 'WS', 'Connected to robot endpoint');
-        ws.send('START\n');
+
+        addEvent('info', 'WS', `[SUCCESS] Connected directly on ${directUrl}`);
+        wsDirect.send('START\n');
         addEvent('info', 'CMD', 'START sent');
+
+        setupMessageAndCloseHandlers(wsDirect, 'direct');
       };
 
-      ws.onclose = () => {
-        if (!mountedRef.current) return;
-        setConnected(false);
-        setRobotReady(false);
-        setConnectionStartedAt(null);
+      wsDirect.onerror = () => {
+        if (wsRef.current === wsDirect) {
+          if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+          wsDirect.close();
+          tryRelayFallback();
+        }
+      };
+
+      wsDirect.onclose = () => {
+        if (wsRef.current === wsDirect) {
+          if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+          tryRelayFallback();
+        }
+      };
+    } catch (err) {
+      tryRelayFallback();
+    }
+
+    function tryRelayFallback() {
+      if (!mountedRef.current) return;
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.onerror = null;
+        wsRef.current.close();
         wsRef.current = null;
-        addEvent('warn', 'WS', 'Connection closed, retrying in 3s');
-        reconnectRef.current = setTimeout(() => connect(), 3000);
-      };
+      }
 
-      ws.onerror = () => {
-        // triggers onclose
-      };
+      // Phase 2: Try Relay connection
+      setCurrentAttemptMode('relay');
+      addEvent('info', 'AUTO', `[Relay Fallback] Trying Relay backend: ${relayUrl}...`);
 
+      try {
+        const wsRelay = new WebSocket(relayUrl);
+        wsRef.current = wsRelay;
+
+        wsRelay.onopen = () => {
+          if (!mountedRef.current || wsRef.current !== wsRelay) return;
+
+          setConnected(true);
+          setConnectionMode('relay');
+          setIsConnecting(false);
+          setCurrentAttemptMode('idle');
+          setConnectionStartedAt(Date.now());
+
+          addEvent('info', 'WS', `[SUCCESS] Connected to relay on ${relayUrl}`);
+          wsRelay.send('START\n');
+          addEvent('info', 'CMD', 'START sent');
+
+          setupMessageAndCloseHandlers(wsRelay, 'relay');
+        };
+
+        wsRelay.onerror = () => {
+          if (wsRef.current === wsRelay) {
+            wsRelay.close();
+            handleAllFailed();
+          }
+        };
+
+        wsRelay.onclose = () => {
+          if (wsRef.current === wsRelay) {
+            handleAllFailed();
+          }
+        };
+      } catch (err) {
+        handleAllFailed();
+      }
+    }
+
+    function handleAllFailed() {
+      if (!mountedRef.current) return;
+      setConnected(false);
+      setRobotReady(false);
+      setConnectionMode('idle');
+      setIsConnecting(false);
+      setCurrentAttemptMode('idle');
+      setConnectionStartedAt(null);
+      wsRef.current = null;
+
+      addEvent('error', 'AUTO', '[CONNECT FAILED] Both routes failed. Re-probing in 4s...');
+      reconnectRef.current = setTimeout(() => connect(), 4000);
+    }
+
+    function setupMessageAndCloseHandlers(ws: WebSocket, mode: 'direct' | 'relay') {
       ws.onmessage = (event: MessageEvent) => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || wsRef.current !== ws) return;
         const raw = String(event.data);
         const lines = raw.split('\n');
         for (const rawLine of lines) {
@@ -152,19 +266,9 @@ export function useRobotConnection(url: string) {
                 parseFloat(parts[2]) || 0,
                 parseFloat(parts[3]) || 0,
               ];
-
-              // Simple denoising: if exactly one value is 0 and it was significantly > 0 before, 
-              // we keep the previous value for ONE frame to avoid flicker.
               const keys = ['l', 'f', 'r', 'b'] as const;
               const filtered = rawVals.map((v, i) => {
                 const k = keys[i];
-                const prev = lastDistRef.current[k];
-                if (v === 0 && prev > 20) {
-                  // Potential flicker, but we must update eventually if it's really 0.
-                  // For now, let's just trust the report and fix UI presentation.
-                  lastDistRef.current[k] = v;
-                  return v;
-                }
                 lastDistRef.current[k] = v;
                 return v;
               });
@@ -205,6 +309,8 @@ export function useRobotConnection(url: string) {
           } else if (line.startsWith('AUTO_EVT:')) {
             setAutopilotLastEvent(line.slice('AUTO_EVT:'.length));
             addEvent('info', 'AUTO', line.slice('AUTO_EVT:'.length));
+          } else if (line.startsWith('DIAG_ESP:') || line.startsWith('DIAG_RESULT:')) {
+            setLastDiagLine(line);
           } else if (line.startsWith('{')) {
             try {
               const obj = JSON.parse(line);
@@ -219,13 +325,26 @@ export function useRobotConnection(url: string) {
           }
         }
       };
-    } catch {
-      if (mountedRef.current) {
-        addEvent('warn', 'WS', 'Connection attempt failed');
+
+      ws.onerror = () => {
+        if (wsRef.current === ws) {
+          ws.close();
+        }
+      };
+
+      ws.onclose = () => {
+        if (!mountedRef.current || wsRef.current !== ws) return;
+        setConnected(false);
+        setRobotReady(false);
+        setConnectionStartedAt(null);
+        setConnectionMode('idle');
+        wsRef.current = null;
+
+        addEvent('warn', 'WS', `Connection to ${mode === 'direct' ? 'Direct' : 'Relay'} lost. Retrying auto-connect in 3s`);
         reconnectRef.current = setTimeout(() => connect(), 3000);
-      }
+      };
     }
-  }, [addEvent, url]);
+  }, [addEvent, directUrl, relayUrl]);
 
   const sendCommand = useCallback((cmd: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -246,7 +365,7 @@ export function useRobotConnection(url: string) {
       mountedRef.current = false;
       disconnect();
     };
-  }, [url]);
+  }, [directUrl, relayUrl]);
 
   return {
     connected,
@@ -271,6 +390,8 @@ export function useRobotConnection(url: string) {
     rpmRightHistory,
     minDistanceHistory,
     autopilotRiskHistory,
+    lastDiagLine,
+    setLastDiagLine,
     messageCount,
     connectionStartedAt,
     eventLog,
@@ -278,5 +399,8 @@ export function useRobotConnection(url: string) {
     claimLeader,
     connect,
     disconnect,
+    connectionMode,
+    isConnecting,
+    currentAttemptMode,
   };
 }

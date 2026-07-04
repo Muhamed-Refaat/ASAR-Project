@@ -1,4 +1,4 @@
-import { LayoutDashboard, Settings, ToyBrick, Activity } from 'lucide-react';
+import { LayoutDashboard, Settings, ToyBrick, Activity, Wrench } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 
 interface BottomNavProps {
@@ -10,6 +10,7 @@ export default function BottomNav({ active, onTabChange }: BottomNavProps) {
   const navItems = [
     { id: 'drive', label: 'Drive', icon: LayoutDashboard },
     { id: 'auto', label: 'Auto', icon: ToyBrick },
+    { id: 'diagnostics', label: 'Diag', icon: Wrench },
     { id: 'data', label: 'Data', icon: Activity },
     { id: 'config', label: 'Config', icon: Settings },
   ];
