@@ -29,6 +29,7 @@ constexpr const char* CMD_MPU_OFF = "MPU_OFF";
 constexpr const char* CMD_MPU_REQ = "MPU_REQ";
 constexpr const char* CMD_MPU_CFG_PREFIX = "MPU_CFG:";
 constexpr const char* CMD_WARN_DIST_PREFIX = "WARN_DIST:";
+constexpr const char* CMD_INV_CFG_PREFIX = "INV_CFG:";
 constexpr const char* CMD_DIAG_START = "DIAG_START";
 
 constexpr const char* MSG_RDY = "RDY";
@@ -74,11 +75,11 @@ constexpr uint8_t ECHO_PINS[4] = {29, 23, 25, 27};
 constexpr uint8_t BUZZER_PIN = 30;
 constexpr uint8_t STATUS_LED_PIN = 31;
 
-// Motor Direction Inversions (set to true if a wheel physically spins backward when commanded forward)
-constexpr bool INVERT_FL = false; // Front Left
-constexpr bool INVERT_RL = false; // Rear Left
-constexpr bool INVERT_FR = false; // Front Right
-constexpr bool INVERT_RR = false; // Rear Right
+// Motor Direction Inversions (mutable global states for on-the-fly calibration)
+bool invertFl = false; // Front Left
+bool invertRl = false; // Rear Left
+bool invertFr = false; // Front Right
+bool invertRr = false; // Rear Right
 
 // L298N #1 (left side)
 constexpr uint8_t L_IN1 = 32;
@@ -339,11 +340,11 @@ void setMotorSide(int16_t speed, bool isLeftSide) {
   bool fwdRear = forward;
 
   if (isLeftSide) {
-    if (INVERT_FL) fwdFront = !forward;
-    if (INVERT_RL) fwdRear = !forward;
+    if (invertFl) fwdFront = !forward;
+    if (invertRl) fwdRear = !forward;
   } else {
-    if (INVERT_FR) fwdFront = !forward;
-    if (INVERT_RR) fwdRear = !forward;
+    if (invertFr) fwdFront = !forward;
+    if (invertRr) fwdRear = !forward;
   }
 
   digitalWrite(in1, fwdFront ? HIGH : LOW);
@@ -1284,6 +1285,37 @@ void handleCommand(const String& line) {
 
   if (line == CMD_DIAG_START) {
     runDiagnostics();
+    return;
+  }
+
+  if (line.startsWith(CMD_INV_CFG_PREFIX)) {
+    int firstColon = line.indexOf(':', strlen(CMD_INV_CFG_PREFIX));
+    int secondColon = line.indexOf(':', firstColon + 1);
+    int thirdColon = line.indexOf(':', secondColon + 1);
+
+    if (firstColon > 0 && secondColon > 0 && thirdColon > 0) {
+      invertFl = line.substring(strlen(CMD_INV_CFG_PREFIX), firstColon).toInt() == 1;
+      invertRl = line.substring(firstColon + 1, secondColon).toInt() == 1;
+      invertFr = line.substring(secondColon + 1, thirdColon).toInt() == 1;
+      invertRr = line.substring(thirdColon + 1).toInt() == 1;
+
+      Serial2.print("ACK:INV_CFG:");
+      Serial2.print(invertFl ? 1 : 0);
+      Serial2.print(':');
+      Serial2.print(invertRl ? 1 : 0);
+      Serial2.print(':');
+      Serial2.print(invertFr ? 1 : 0);
+      Serial2.print(':');
+      Serial2.println(invertRr ? 1 : 0);
+
+      Serial.print("[MEGA][ACK] Motor Inversions set: ");
+      Serial.print(invertFl); Serial.print(" ");
+      Serial.print(invertRl); Serial.print(" ");
+      Serial.print(invertFr); Serial.print(" ");
+      Serial.println(invertRr);
+    } else {
+      Serial2.println("ERR:BAD_ARG");
+    }
     return;
   }
 

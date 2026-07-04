@@ -3,8 +3,6 @@ import { cn } from '@/src/lib/utils';
 import { Sliders } from 'lucide-react';
 import IndividualWheelControl from './IndividualWheelControl';
 
-type ConnectionMode = 'direct' | 'relay';
-
 interface ConnectionSettingsProps {
   directUrl: string;
   relayUrl: string;
@@ -13,28 +11,13 @@ interface ConnectionSettingsProps {
   robotReady: boolean;
   isLeader?: boolean;
   manualLocked?: boolean;
-  onConnect: (url: string, mode: ConnectionMode) => void;
+  onConnect: () => void;
   onDisconnect: () => void;
   onDirectUrlChange: (url: string) => void;
   onRelayUrlChange: (url: string) => void;
-}
-
-function extractDirectIp(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname || '192.168.1.100';
-  } catch {
-    return (url || '192.168.1.100').replace(/^wss?:\/\//, '').replace(/:\d+.*$/, '');
-  }
-}
-
-function extractRelayHost(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.host || 'localhost:3001';
-  } catch {
-    return (url || 'localhost:3001').replace(/^wss?:\/\//, '').replace(/\/.*$/, '');
-  }
+  connectionMode: 'idle' | 'direct' | 'relay';
+  isConnecting: boolean;
+  currentAttemptMode: 'idle' | 'direct' | 'relay';
 }
 
 export default function ConnectionSettings({
@@ -49,6 +32,9 @@ export default function ConnectionSettings({
   onDisconnect,
   onDirectUrlChange,
   onRelayUrlChange,
+  connectionMode,
+  isConnecting,
+  currentAttemptMode,
 }: ConnectionSettingsProps) {
   const [directIp, setDirectIp] = useState(() => directUrl);
   const [relayHost, setRelayHost] = useState(() => relayUrl);
@@ -71,6 +57,17 @@ export default function ConnectionSettings({
 
   // Safety Indicator States
   const [warnDist, setWarnDist] = useState(25);
+
+  // Motor Inversion States
+  const [invertFl, setInvertFl] = useState(false);
+  const [invertRl, setInvertRl] = useState(false);
+  const [invertFr, setInvertFr] = useState(false);
+  const [invertRr, setInvertRr] = useState(false);
+
+  const applyInversions = () => {
+    const cmd = `INV_CFG:${invertFl ? 1 : 0}:${invertRl ? 1 : 0}:${invertFr ? 1 : 0}:${invertRr ? 1 : 0}`;
+    sendCommand(cmd);
+  };
 
   const handleMinFrontChange = (val: number) => {
     setMinFrontCm(val);
@@ -151,13 +148,10 @@ export default function ConnectionSettings({
   };
 
   const applyAllConfigs = () => {
-    // Send AutoPilot Config
     sendCommand(`AUTO_CFG:${cruiseSpeed}:${turnSpeed}:${minFrontCm}:${cautionFrontCm}:${reverseSpeed}:${reverseMs}:${turnMs}:${sideBias}`);
-    // Send IMU Config sequentially to prevent buffer collision
     setTimeout(() => {
       sendCommand(`MPU_CFG:${accelThr}:${gyroThr}:${alphaPct}:${reportMs}`);
     }, 120);
-    // Send Safety Config sequentially
     setTimeout(() => {
       sendCommand(`WARN_DIST:${warnDist}`);
     }, 240);
@@ -173,66 +167,75 @@ export default function ConnectionSettings({
 
   return (
     <div className="mx-4 mt-6 space-y-4">
-      <section className="glass-panel rounded-2xl p-5">
-        <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-primary">Direct ESP32</h3>
-        <label className="block text-[11px] mt-3 mb-1 text-on-surface-variant font-mono uppercase tracking-wider">ESP32 IP / WebSocket URL</label>
-        <input
-          value={directIp}
-          onChange={(event) => {
-            const val = event.target.value.trim();
-            setDirectIp(val);
-            onDirectUrlChange(val);
-          }}
-          className="w-full rounded-xl bg-surface-container-high border border-white/10 px-3 py-2 text-sm outline-none focus:border-primary"
-          placeholder="ws://192.168.1.100:81"
-        />
-        <p className="mt-2 font-mono text-[11px] text-on-surface-variant">URL: {directIp}</p>
-        <p className="mt-2 text-xs text-on-surface-variant">Tip: You can also try ws://robot.local:81 on local Wi-Fi.</p>
-        <button
-          onClick={() => onConnect(directIp, 'direct')}
-          disabled={connected}
-          className={cn(
-            "mt-3 w-full py-2.5 rounded-xl bg-primary text-surface font-sans text-xs font-bold uppercase hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer",
-            connected && "opacity-40 cursor-not-allowed hover:brightness-100 active:scale-100"
-          )}
-        >
-          Connect Direct
-        </button>
+      {/* Automated Multi-Route Connection Settings */}
+      <section className="glass-panel rounded-2xl p-5 space-y-4">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-primary">Connection Settings</h3>
+        <p className="text-xs text-on-surface-variant">
+          Your phone automatically tries connecting directly to the robot's local Wi-Fi first. If unreachable, it falls back to the relay backend.
+        </p>
+
+        <div>
+          <label className="block text-[11px] mb-1 text-on-surface-variant font-mono uppercase tracking-wider">Direct ESP32 IP / WebSocket URL</label>
+          <input
+            value={directIp}
+            onChange={(event) => {
+              const val = event.target.value.trim();
+              setDirectIp(val);
+              onDirectUrlChange(val);
+            }}
+            disabled={connected || isConnecting}
+            className="w-full rounded-xl bg-surface-container-high border border-white/10 px-3 py-2 text-sm outline-none focus:border-primary disabled:opacity-50"
+            placeholder="ws://192.168.1.100:81"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[11px] mb-1 text-on-surface-variant font-mono uppercase tracking-wider">Relay Backend Host / WebSocket URL</label>
+          <input
+            value={relayHost}
+            onChange={(event) => {
+              const val = event.target.value.trim();
+              setRelayHost(val);
+              onRelayUrlChange(val);
+            }}
+            disabled={connected || isConnecting}
+            className="w-full rounded-xl bg-surface-container-high border border-white/10 px-3 py-2 text-sm outline-none focus:border-primary disabled:opacity-50"
+            placeholder="ws://localhost:3001/ws"
+          />
+        </div>
+
+        {connected ? (
+          <button
+            onClick={onDisconnect}
+            className="w-full py-2.5 rounded-xl bg-error text-surface font-sans text-xs font-bold uppercase hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer"
+          >
+            Disconnect Robot
+          </button>
+        ) : (
+          <button
+            onClick={onConnect}
+            disabled={isConnecting}
+            className={cn(
+              "w-full py-2.5 rounded-xl text-surface font-sans text-xs font-bold uppercase hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer",
+              isConnecting ? "bg-warning text-surface cursor-wait" : "bg-primary text-surface"
+            )}
+          >
+            {isConnecting 
+              ? `Connecting (${currentAttemptMode === 'direct' ? 'Probing Direct' : 'Trying Relay fallback'})...` 
+              : 'Connect Robot'}
+          </button>
+        )}
       </section>
 
-      <section className="glass-panel rounded-2xl p-5">
-        <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-primary">Relay Backend</h3>
-        <label className="block text-[11px] mt-3 mb-1 text-on-surface-variant font-mono uppercase tracking-wider">Relay Host / WebSocket URL</label>
-        <input
-          value={relayHost}
-          onChange={(event) => {
-            const val = event.target.value.trim();
-            setRelayHost(val);
-            onRelayUrlChange(val);
-          }}
-          className="w-full rounded-xl bg-surface-container-high border border-white/10 px-3 py-2 text-sm outline-none focus:border-primary"
-          placeholder="ws://localhost:3001/ws"
-        />
-        <p className="mt-2 font-mono text-[11px] text-on-surface-variant">URL: {relayHost}</p>
-        <p className="mt-2 text-xs text-on-surface-variant">Tip: Use relay mode when controlling over the internet.</p>
-        <button
-          onClick={() => onConnect(relayHost, 'relay')}
-          disabled={connected}
-          className={cn(
-            "mt-3 w-full py-2.5 rounded-xl bg-primary text-surface font-sans text-xs font-bold uppercase hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer",
-            connected && "opacity-40 cursor-not-allowed hover:brightness-100 active:scale-100"
-          )}
-        >
-          Connect Relay
-        </button>
-      </section>
-
+      {/* Connection Status Monitor */}
       <section className="glass-panel rounded-2xl p-5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-mono text-xs font-bold uppercase tracking-widest text-on-surface-variant">Status</p>
-            <p className={cn('mt-1 font-sans text-sm font-semibold', connected ? 'text-secondary' : 'text-error')}>
-              {connected ? 'Connected' : 'Disconnected'}
+            <p className="font-mono text-xs font-bold uppercase tracking-widest text-on-surface-variant">Active Status</p>
+            <p className={cn('mt-1 font-sans text-sm font-semibold uppercase tracking-wider', connected ? 'text-secondary' : 'text-error')}>
+              {connected 
+                ? `Connected [${connectionMode === 'direct' ? 'Direct Mode' : 'Relay Mode'}]` 
+                : 'Disconnected'}
             </p>
           </div>
           {connected && (
@@ -284,11 +287,11 @@ export default function ConnectionSettings({
           onClick={applyAllConfigs}
           disabled={!connected}
           className={cn(
-            'mt-4 w-full py-3 rounded-xl font-sans text-xs font-black uppercase tracking-wider transition-all',
-            connected ? 'bg-primary text-surface hover:brightness-110 shadow-lg' : 'bg-white/10 text-on-surface-variant cursor-not-allowed',
+            'mt-5 w-full py-2.5 rounded-xl font-sans text-xs font-bold uppercase transition-all',
+            connected ? 'bg-primary text-surface' : 'bg-white/10 text-on-surface-variant cursor-not-allowed',
           )}
         >
-          Apply All Configs to Robot
+          Apply Preset Configuration
         </button>
       </section>
 
@@ -517,6 +520,69 @@ export default function ConnectionSettings({
           )}
         >
           Apply Warning Distance
+        </button>
+      </section>
+
+      {/* Group 4: Motor Polarities Inversion */}
+      <section className="glass-panel rounded-2xl p-5">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-primary">Motor Polarities</h3>
+        <p className="mt-1 text-xs text-on-surface-variant">Calibrate wheel direction inversion on-the-fly to solve "sideways sliding / sidewalk" wiring issues.</p>
+
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container-high border border-white/5 cursor-pointer">
+            <span className="font-mono text-[10px] uppercase text-on-surface-variant">Invert FL</span>
+            <input
+              type="checkbox"
+              checked={invertFl}
+              onChange={(e) => setInvertFl(e.target.checked)}
+              disabled={!connected}
+              className="accent-primary w-4 h-4 cursor-pointer"
+            />
+          </label>
+
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container-high border border-white/5 cursor-pointer">
+            <span className="font-mono text-[10px] uppercase text-on-surface-variant">Invert RL</span>
+            <input
+              type="checkbox"
+              checked={invertRl}
+              onChange={(e) => setInvertRl(e.target.checked)}
+              disabled={!connected}
+              className="accent-primary w-4 h-4 cursor-pointer"
+            />
+          </label>
+
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container-high border border-white/5 cursor-pointer">
+            <span className="font-mono text-[10px] uppercase text-on-surface-variant">Invert FR</span>
+            <input
+              type="checkbox"
+              checked={invertFr}
+              onChange={(e) => setInvertFr(e.target.checked)}
+              disabled={!connected}
+              className="accent-primary w-4 h-4 cursor-pointer"
+            />
+          </label>
+
+          <label className="flex items-center justify-between p-3 rounded-xl bg-surface-container-high border border-white/5 cursor-pointer">
+            <span className="font-mono text-[10px] uppercase text-on-surface-variant">Invert RR</span>
+            <input
+              type="checkbox"
+              checked={invertRr}
+              onChange={(e) => setInvertRr(e.target.checked)}
+              disabled={!connected}
+              className="accent-primary w-4 h-4 cursor-pointer"
+            />
+          </label>
+        </div>
+
+        <button
+          onClick={applyInversions}
+          disabled={!connected}
+          className={cn(
+            'mt-5 w-full py-2.5 rounded-xl font-sans text-xs font-bold uppercase transition-all',
+            connected ? 'bg-primary text-surface hover:brightness-110 active:scale-[0.98]' : 'bg-white/10 text-on-surface-variant cursor-not-allowed',
+          )}
+        >
+          Apply Motor Polarities
         </button>
       </section>
 

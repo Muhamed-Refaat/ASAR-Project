@@ -45,6 +45,7 @@ constexpr const char* CMD_MPU_OFF = "MPU_OFF";
 constexpr const char* CMD_MPU_REQ = "MPU_REQ";
 constexpr const char* CMD_MPU_CFG_PREFIX = "MPU_CFG:";
 constexpr const char* CMD_WARN_DIST_PREFIX = "WARN_DIST:";
+constexpr const char* CMD_INV_CFG_PREFIX = "INV_CFG:";
 constexpr const char* CMD_DIAG_START = "DIAG_START";
 
 // --- Protocol tokens (Mega feedback) ---
@@ -244,7 +245,7 @@ static void handleRobotCommandFromApp(const String& line, uint8_t clientId) {
     if (val >= 0 && val <= 255) { pendingMaxSpeed = val; sendMega(line); }
     return;
   }
-  if (line == CMD_MPU_ON || line == CMD_MPU_OFF || line == CMD_MPU_REQ || line.startsWith(CMD_MPU_CFG_PREFIX) || line.startsWith(CMD_AUTO_CFG_PREFIX) || line.startsWith(CMD_WARN_DIST_PREFIX)) {
+  if (line == CMD_MPU_ON || line == CMD_MPU_OFF || line == CMD_MPU_REQ || line.startsWith(CMD_MPU_CFG_PREFIX) || line.startsWith(CMD_AUTO_CFG_PREFIX) || line.startsWith(CMD_WARN_DIST_PREFIX) || line.startsWith("ABS_GOAL:") || line.startsWith("INV_CFG:")) {
     sendMega(line);
     return;
   }
