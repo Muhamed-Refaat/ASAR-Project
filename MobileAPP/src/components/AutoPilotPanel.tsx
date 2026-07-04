@@ -37,44 +37,14 @@ export default function AutoPilotPanel({
   sendCommand,
 }: AutoPilotPanelProps) {
   // Simplified Config
-  const [cruiseSpeed, setCruiseSpeed] = useState(() => parseInt(localStorage.getItem('auto_cfg_cruise_speed') || '140', 10));
-  const [turnSpeed, setTurnSpeed] = useState(() => parseInt(localStorage.getItem('auto_cfg_turn_speed') || '165', 10));
-  const [minFrontCm, setMinFrontCm] = useState(() => parseInt(localStorage.getItem('auto_cfg_min_front') || '24', 10));
-  const [sideBias, setSideBias] = useState(() => parseInt(localStorage.getItem('auto_cfg_side_bias') || '0', 10));
-
   // Mission State
   const [targetDist, setTargetDist] = useState(5.0);
   const [targetAngle, setTargetAngle] = useState(0);
 
   const canControl = robotReady && isLeader;
 
-  const applyConfig = () => {
-    if (!canControl) return;
-
-    const cfg = {
-      cruiseSpeed: clamp(cruiseSpeed, 60, 220),
-      turnSpeed: clamp(turnSpeed, 90, 255),
-      minFrontCm: clamp(minFrontCm, 10, 80),
-      cautionFrontCm: clamp(minFrontCm + 18, 14, 140), // Calculated default
-      reverseSpeed: 120,
-      reverseMs: 400,
-      turnMs: 600,
-      sideBias: clamp(sideBias, -100, 100),
-    };
-
-    sendCommand(
-      `AUTO_CFG:${cfg.cruiseSpeed}:${cfg.turnSpeed}:${cfg.minFrontCm}:${cfg.cautionFrontCm}:${cfg.reverseSpeed}:${cfg.reverseMs}:${cfg.turnMs}:${cfg.sideBias}`,
-    );
-
-    localStorage.setItem('auto_cfg_cruise_speed', String(cfg.cruiseSpeed));
-    localStorage.setItem('auto_cfg_turn_speed', String(cfg.turnSpeed));
-    localStorage.setItem('auto_cfg_min_front', String(cfg.minFrontCm));
-    localStorage.setItem('auto_cfg_side_bias', String(cfg.sideBias));
-  };
-
   const startMission = () => {
     if (!canControl) return;
-    applyConfig(); // Ensure latest behavior config is sent
     sendCommand(`GOAL:${targetDist}:${targetAngle}`);
   };
 
@@ -183,56 +153,7 @@ export default function AutoPilotPanel({
         </button>
       </div>
 
-      {/* Behavior Profile */}
-      <div className="p-4 rounded-2xl glass-panel space-y-4">
-        <div className="flex items-center gap-2 border-b border-white/5 pb-2">
-          <Zap className="w-4 h-4 text-primary" />
-          <h3 className="font-mono text-[10px] font-black uppercase tracking-widest text-on-surface">Behavior Profile</h3>
-        </div>
 
-        <div className="space-y-3">
-          <label className="block">
-            <div className="flex justify-between font-mono text-[9px] uppercase text-on-surface-variant">
-              <span>Cruise Velocity</span>
-              <span>{cruiseSpeed} PWM</span>
-            </div>
-            <input type="range" min={60} max={220} value={cruiseSpeed} onChange={(e) => setCruiseSpeed(parseInt(e.target.value, 10))} className="w-full mt-1 accent-primary" />
-          </label>
-
-          <label className="block">
-            <div className="flex justify-between font-mono text-[9px] uppercase text-on-surface-variant">
-              <span>Obstacle Safety Buffer</span>
-              <span>{minFrontCm} cm</span>
-            </div>
-            <input type="range" min={10} max={60} value={minFrontCm} onChange={(e) => setMinFrontCm(parseInt(e.target.value, 10))} className="w-full mt-1 accent-primary" />
-          </label>
-
-          <div className="grid grid-cols-2 gap-3 pt-1">
-             <label className="block">
-              <div className="flex justify-between font-mono text-[9px] uppercase text-on-surface-variant mb-1">
-                <span>Turn Speed</span>
-                <span>{turnSpeed}</span>
-              </div>
-              <input type="number" min={90} max={255} value={turnSpeed} onChange={(e) => setTurnSpeed(parseInt(e.target.value || '0', 10))} className="w-full rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-[10px] font-mono" />
-            </label>
-            <label className="block">
-              <div className="flex justify-between font-mono text-[9px] uppercase text-on-surface-variant mb-1">
-                <span>Side Bias</span>
-                <span>{sideBias}</span>
-              </div>
-              <input type="number" min={-100} max={100} value={sideBias} onChange={(e) => setSideBias(parseInt(e.target.value || '0', 10))} className="w-full rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-[10px] font-mono" />
-            </label>
-          </div>
-        </div>
-
-        <button
-          onClick={applyConfig}
-          disabled={!canControl}
-          className={`w-full py-2 rounded-xl font-sans text-[10px] font-bold uppercase transition-all ${!canControl ? 'opacity-50 bg-primary/20 text-on-surface/40' : 'bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30'}`}
-        >
-          Update Behavior Profile
-        </button>
-      </div>
 
       <div className="p-4 rounded-2xl glass-panel">
         <h3 className="font-mono text-[9px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Protocol Reference</h3>

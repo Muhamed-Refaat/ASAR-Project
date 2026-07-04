@@ -12,6 +12,13 @@
 static const char WIFI_SSID[] = "Refaat Allam";
 static const char WIFI_PASS[] = "Allam12345e";
 
+// --- Static IP Configuration ---
+IPAddress local_IP(192, 168, 1, 100);
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress primaryDNS(192, 168, 1, 1);
+IPAddress secondaryDNS(8, 8, 8, 8);
+
 // --- ESP32 app socket ---
 constexpr uint16_t APP_WS_PORT = 81;
 WebSocketsServer appWs(APP_WS_PORT);
@@ -37,6 +44,7 @@ constexpr const char* CMD_MPU_ON = "MPU_ON";
 constexpr const char* CMD_MPU_OFF = "MPU_OFF";
 constexpr const char* CMD_MPU_REQ = "MPU_REQ";
 constexpr const char* CMD_MPU_CFG_PREFIX = "MPU_CFG:";
+constexpr const char* CMD_WARN_DIST_PREFIX = "WARN_DIST:";
 
 // --- Protocol tokens (Mega feedback) ---
 constexpr const char* MSG_RDY = "RDY";
@@ -214,7 +222,7 @@ static void handleRobotCommandFromApp(const String& line, uint8_t clientId) {
     if (val >= 0 && val <= 255) { pendingMaxSpeed = val; sendMega(line); }
     return;
   }
-  if (line == CMD_MPU_ON || line == CMD_MPU_OFF || line == CMD_MPU_REQ || line.startsWith(CMD_MPU_CFG_PREFIX)) {
+  if (line == CMD_MPU_ON || line == CMD_MPU_OFF || line == CMD_MPU_REQ || line.startsWith(CMD_MPU_CFG_PREFIX) || line.startsWith(CMD_AUTO_CFG_PREFIX) || line.startsWith(CMD_WARN_DIST_PREFIX)) {
     sendMega(line);
     return;
   }
@@ -278,6 +286,14 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial2.begin(UART_BAUD, SERIAL_8N1, UART2_RX_PIN, UART2_TX_PIN);
+
+  // Apply static IP configuration before starting WiFi STA
+  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
+    Serial.println("[ESP][NET] Static IP Configuration Failed");
+  } else {
+    Serial.println("[ESP][NET] Static IP Configured Successfully: 192.168.1.100");
+  }
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   appWs.begin();

@@ -7,6 +7,7 @@ interface IndividualWheelControlProps {
   robotReady: boolean;
   isLeader?: boolean;
   manualLocked?: boolean;
+  className?: string;
 }
 
 export default function IndividualWheelControl({
@@ -14,6 +15,7 @@ export default function IndividualWheelControl({
   robotReady,
   isLeader = true,
   manualLocked = false,
+  className,
 }: IndividualWheelControlProps) {
   const canControl = robotReady && isLeader && !manualLocked;
 
@@ -89,7 +91,7 @@ export default function IndividualWheelControl({
   }, []);
 
   return (
-    <div className="mx-4 mt-6 p-6 rounded-2xl glass-panel text-center" id="individual-wheel-control-card">
+    <div className={cn("mx-4 mt-6 p-6 rounded-2xl glass-panel text-center", className)} id="individual-wheel-control-card">
       <h3 className="font-mono text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-6">
         4-Wheel Independent Speed Control
       </h3>

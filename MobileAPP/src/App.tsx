@@ -15,17 +15,20 @@ import IndividualWheelControl from './components/IndividualWheelControl';
 export default function App() {
   type ActiveTab = 'drive' | 'auto' | 'data' | 'config';
   type ConnectionMode = 'direct' | 'relay';
-  type ControlMode = 'joystick' | 'buttons' | 'individual';
+  type ControlMode = 'joystick' | 'buttons';
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('drive');
   const [controlMode, setControlMode] = useState<ControlMode>(
-    () => (localStorage.getItem('robot_control_mode') as ControlMode) || 'joystick',
+    () => {
+      const saved = localStorage.getItem('robot_control_mode') as ControlMode;
+      return (saved === 'joystick' || saved === 'buttons') ? saved : 'joystick';
+    },
   );
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>(
     () => (localStorage.getItem('robot_connection_mode') as ConnectionMode) || 'direct',
   );
   const [directUrl, setDirectUrl] = useState(
-    () => localStorage.getItem('robot_direct_url') || 'ws://192.168.100.34:81',
+    () => localStorage.getItem('robot_direct_url') || 'ws://192.168.1.100:81',
   );
   const [relayUrl, setRelayUrl] = useState(
     () => localStorage.getItem('robot_relay_url') || 'ws://localhost:3001/ws',
@@ -131,19 +134,6 @@ export default function App() {
               >
                 Buttons
               </button>
-              <button
-                onClick={() => {
-                  setControlMode('individual');
-                  localStorage.setItem('robot_control_mode', 'individual');
-                }}
-                className={`flex-1 py-2 rounded-xl font-mono text-[10px] font-bold uppercase transition-all ${
-                  controlMode === 'individual'
-                    ? 'bg-primary text-surface'
-                    : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'
-                }`}
-              >
-                Individual
-              </button>
             </div>
 
             {/* Conditional Control Rendering */}
@@ -157,14 +147,6 @@ export default function App() {
             )}
             {controlMode === 'buttons' && (
               <ButtonControl
-                sendCommand={robot.sendCommand}
-                robotReady={robot.robotReady}
-                isLeader={robot.isLeader}
-                manualLocked={robot.autopilotEnabled}
-              />
-            )}
-            {controlMode === 'individual' && (
-              <IndividualWheelControl
                 sendCommand={robot.sendCommand}
                 robotReady={robot.robotReady}
                 isLeader={robot.isLeader}
@@ -230,18 +212,17 @@ export default function App() {
 
         {activeTab === 'config' && (
           <ConnectionSettings
-            connectionMode={connectionMode}
             directUrl={directUrl}
             relayUrl={relayUrl}
             connected={robot.connected}
-            maxSpeed={maxSpeed}
-            maxSpeedAck={robot.maxSpeedAck}
+            sendCommand={robot.sendCommand}
+            robotReady={robot.robotReady}
+            isLeader={robot.isLeader}
+            manualLocked={robot.autopilotEnabled}
             onConnect={handleConnect}
             onDisconnect={handleDisconnect}
-            onModeChange={handleModeChange}
             onDirectUrlChange={handleDirectUrlChange}
             onRelayUrlChange={handleRelayUrlChange}
-            onApplyMaxSpeed={handleApplyMaxSpeed}
           />
         )}
       </main>

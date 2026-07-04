@@ -27,6 +27,7 @@ constexpr const char* CMD_MPU_ON = "MPU_ON";
 constexpr const char* CMD_MPU_OFF = "MPU_OFF";
 constexpr const char* CMD_MPU_REQ = "MPU_REQ";
 constexpr const char* CMD_MPU_CFG_PREFIX = "MPU_CFG:";
+constexpr const char* CMD_WARN_DIST_PREFIX = "WARN_DIST:";
 
 constexpr const char* MSG_RDY = "RDY";
 constexpr const char* MSG_RPM_PREFIX = "RPM:";
@@ -97,7 +98,7 @@ constexpr uint16_t ULTRASONIC_TIMEOUT_US = 12000;
 constexpr unsigned long ULTRASONIC_SAMPLE_INTERVAL_MS = 40;
 constexpr unsigned long RPM_REPORT_INTERVAL_MS = 500;
 constexpr unsigned long DIST_REPORT_INTERVAL_MS = 200;
-constexpr uint16_t WARNING_DISTANCE_CM = 25;
+uint16_t warningDistanceCm = 25;
 constexpr unsigned long WARNING_BLINK_MS = 160;
 constexpr float ENCODER_PULSES_PER_REV = 20.0f;
 constexpr float WHEEL_DIAMETER_MM = 65.0f;
@@ -648,7 +649,7 @@ void maybeReportDistances() {
 static bool isObstacleClose() {
   for (uint8_t i = 0; i < 4; ++i) {
     const uint16_t d = distancesCm[i];
-    if (d > 0 && d <= WARNING_DISTANCE_CM) {
+    if (d > 0 && d <= warningDistanceCm) {
       return true;
     }
   }
@@ -1277,6 +1278,21 @@ void handleCommand(const String& line) {
     Serial2.println(maxSpeed);
     Serial.print("[MEGA][ACK] MAX_SPD:");
     Serial.println(maxSpeed);
+    return;
+  }
+
+  if (line.startsWith(CMD_WARN_DIST_PREFIX)) {
+    int16_t dist = 0;
+    if (!parseInt16Strict(line.substring(strlen(CMD_WARN_DIST_PREFIX)), dist) || dist < 10 || dist > 150) {
+      Serial2.println("ERR:BAD_ARG");
+      Serial.println("[MEGA][ERR] BAD_ARG WARN_DIST");
+      return;
+    }
+    warningDistanceCm = static_cast<uint16_t>(dist);
+    Serial2.print("ACK:WARN_DIST:");
+    Serial2.println(warningDistanceCm);
+    Serial.print("[MEGA][ACK] WARN_DIST:");
+    Serial.println(warningDistanceCm);
     return;
   }
 
