@@ -12,7 +12,7 @@ Automates the compilation and flashing of both boards.
 Run the flash script from the command line:
 
 ```powershell
-.github\GeminiSkills\autopilot-debug\scripts\flash_all.bat COM5 COM6
+gemini\skills\autopilot-debug\scripts\flash_all.bat COM5 COM6
 ```
 
 ## Troubleshooting

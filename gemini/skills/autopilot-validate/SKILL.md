@@ -22,10 +22,10 @@ Run the combined flash and monitor script to ensure hardware is reporting teleme
 
 ```powershell
 # Flash both boards
-.github\skills\autopilot-debug\scripts\flash_all.bat COM5 COM6
+gemini\skills\autopilot-debug\scripts\flash_all.bat COM5 COM6
 
 # Start monitoring for telemetry patterns
-.\.github\skills\autopilot-debug\scripts\serial_monitor.ps1 `
+.\gemini\skills\autopilot-debug\scripts\serial_monitor.ps1 `
     -Esp32Port COM6 `
     -MegaPort COM5 `
     -ExpectedPatterns @("RDY","DIST:","RPM:") `

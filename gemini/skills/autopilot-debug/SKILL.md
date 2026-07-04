@@ -72,7 +72,7 @@ erase_flash_com6.bat COM6
 
 Run the compile + upload script:
 ```bat
-.github\skills\autopilot-debug\scripts\flash_all.bat COM5 COM6
+gemini\skills\autopilot-debug\scripts\flash_all.bat COM5 COM6
 ```
 Arguments: `[MEGA_PORT] [ESP32_PORT]`
 
@@ -86,7 +86,7 @@ Build and upload logs land in `logs\flash_mega.log` and `logs\flash_esp32.log`.
 
 Run from a **PowerShell** terminal (not CMD — uses PS jobs):
 ```powershell
-.\.github\skills\autopilot-debug\scripts\serial_monitor.ps1 `
+.\gemini\skills\autopilot-debug\scripts\serial_monitor.ps1 `
     -Esp32Port COM6 `
     -MegaPort COM5 `
     -ExpectedPatterns @("RDY","DIST:","RPM:") `
