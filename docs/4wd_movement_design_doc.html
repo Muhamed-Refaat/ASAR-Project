@@ -1,0 +1,384 @@
+
+<style>
+  :root { --accent-fwd: #1D9E75; --accent-bwd: #3B8BD4; --accent-rot: #BA7517; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  h2.sr-only { position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0); }
+  .doc-wrap { padding: 1.5rem 0; }
+  .doc-title { font-size: 20px; font-weight: 500; color: var(--color-text-primary); margin: 0 0 4px; }
+  .doc-sub { font-size: 13px; color: var(--color-text-secondary); margin: 0 0 2rem; }
+  .tabs { display: flex; gap: 0; border-bottom: 0.5px solid var(--color-border-tertiary); margin-bottom: 2rem; }
+  .tab { padding: 8px 20px; font-size: 14px; cursor: pointer; color: var(--color-text-secondary); border-bottom: 2px solid transparent; margin-bottom: -0.5px; background: none; border-top: none; border-left: none; border-right: none; transition: color .15s; }
+  .tab.active { color: var(--color-text-primary); font-weight: 500; border-bottom-color: var(--color-text-primary); }
+  .tab:hover:not(.active) { color: var(--color-text-primary); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .section-label { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-secondary); margin: 0 0 8px; }
+  .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 10px; border-radius: 99px; font-weight: 500; }
+  .pill-fwd { background: #E1F5EE; color: #0F6E56; }
+  .pill-bwd { background: #E6F1FB; color: #185FA5; }
+  .pill-rot { background: #FAEEDA; color: #854F0B; }
+  .pill-stop { background: #FCEBEB; color: #A32D2D; }
+  .rule-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 0.5px solid var(--color-border-tertiary); font-size: 13px; }
+  .rule-row:last-child { border-bottom: none; }
+  .rule-icon { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .rule-label { font-weight: 500; color: var(--color-text-primary); line-height: 1.4; }
+  .rule-detail { color: var(--color-text-secondary); line-height: 1.5; margin-top: 2px; }
+  .code-box { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; color: var(--color-text-primary); margin-top: 10px; line-height: 1.7; }
+  .warn-box { background: #FAEEDA; border: 0.5px solid #EF9F27; border-radius: var(--border-radius-md); padding: 10px 14px; font-size: 13px; color: #633806; margin-top: 10px; }
+  .warn-box strong { color: #412402; }
+  .tip-box { background: #E1F5EE; border: 0.5px solid #1D9E75; border-radius: var(--border-radius-md); padding: 10px 14px; font-size: 13px; color: #085041; margin-top: 10px; }
+  .tip-box strong { color: #04342C; }
+  .speed-tag { display: inline-block; font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+  .pos { background: #E1F5EE; color: #0F6E56; }
+  .neg { background: #FCEBEB; color: #A32D2D; }
+  .zero { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .wheel-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  .wheel-table th { text-align: left; padding: 6px 8px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); font-weight: 500; font-size: 12px; color: var(--color-text-secondary); }
+  .wheel-table td { padding: 7px 8px; border: 0.5px solid var(--color-border-tertiary); vertical-align: middle; }
+  .wheel-table tr:nth-child(even) td { background: var(--color-background-secondary); }
+  .diag-label { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin: 1.25rem 0 6px; }
+  .gap-top { margin-top: 1rem; }
+</style>
+
+<div class="doc-wrap">
+  <h2 class="sr-only">4WD robot movement design document covering forward, backward, and rotate-in-place motions with wheel-by-wheel diagrams and UART command references.</h2>
+
+  <p class="doc-title">4WD Robot — Movement Design Document</p>
+  <p class="doc-sub">Wheel-by-wheel behavior for forward, backward, and rotate-in-place — including jitter root cause analysis</p>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('forward', this)">Forward</button>
+    <button class="tab" onclick="switchTab('backward', this)">Backward</button>
+    <button class="tab" onclick="switchTab('rotate', this)">Rotate in place</button>
+    <button class="tab" onclick="switchTab('jitter', this)">Jitter fix</button>
+  </div>
+
+  <!-- ══════════════════════════════ FORWARD ══════════════════════════════ -->
+  <div class="panel active" id="panel-forward">
+    <div class="two-col" style="margin-bottom:16px">
+      <div>
+        <p class="section-label">Command</p>
+        <div class="card">
+          <span class="pill pill-fwd">FORWARD</span>
+          <div class="code-box">SPD:+V:+V<br><span style="color:var(--color-text-secondary)">// V = 0..255 (same both sides)</span></div>
+          <div class="code-box" style="margin-top:6px">FWD:V<span style="color:var(--color-text-secondary)"><br>// shorthand wrapper</span></div>
+          <p class="section-label gap-top">Wheel truth table</p>
+          <table class="wheel-table">
+            <tr><th>Wheel</th><th>Direction</th><th>Speed (PWM)</th></tr>
+            <tr><td>Front-Left</td><td>▲ Forward</td><td><span class="speed-tag pos">+V</span></td></tr>
+            <tr><td>Rear-Left</td><td>▲ Forward</td><td><span class="speed-tag pos">+V</span></td></tr>
+            <tr><td>Front-Right</td><td>▲ Forward</td><td><span class="speed-tag pos">+V</span></td></tr>
+            <tr><td>Rear-Right</td><td>▲ Forward</td><td><span class="speed-tag pos">+V</span></td></tr>
+          </table>
+          <div class="tip-box" style="margin-top:10px"><strong>Rule:</strong> All four wheels spin at equal positive speed. Left side and right side run identical PWM values → straight-line motion.</div>
+        </div>
+      </div>
+      <div>
+        <p class="section-label">Wheel diagram</p>
+        <div class="card">
+          <svg width="100%" viewBox="0 0 300 320" role="img">
+            <title>Forward movement — all four wheels turning forward</title>
+            <desc>Top view of the robot with all four wheels highlighted green and arrows pointing forward.</desc>
+            <defs>
+              <marker id="a-fwd" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </marker>
+            </defs>
+            <!-- Robot body -->
+            <rect x="80" y="80" width="140" height="160" rx="10" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.5"/>
+            <text x="150" y="156" text-anchor="middle" dominant-baseline="central" font-size="12" font-family="var(--font-sans)" fill="#0F6E56" font-weight="500">ROBOT</text>
+            <text x="150" y="173" text-anchor="middle" dominant-baseline="central" font-size="11" font-family="var(--font-sans)" fill="#1D9E75">top view</text>
+            <!-- Front label -->
+            <text x="150" y="60" text-anchor="middle" font-size="11" font-family="var(--font-sans)" fill="var(--color-text-secondary)">FRONT ▲</text>
+            <!-- Wheels FL -->
+            <rect x="44" y="90" width="36" height="52" rx="4" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.5"/>
+            <text x="62" y="117" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#085041" font-weight="500">FL</text>
+            <!-- Wheels RL -->
+            <rect x="44" y="178" width="36" height="52" rx="4" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.5"/>
+            <text x="62" y="205" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#085041" font-weight="500">RL</text>
+            <!-- Wheels FR -->
+            <rect x="220" y="90" width="36" height="52" rx="4" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.5"/>
+            <text x="238" y="117" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#085041" font-weight="500">FR</text>
+            <!-- Wheels RR -->
+            <rect x="220" y="178" width="36" height="52" rx="4" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.5"/>
+            <text x="238" y="205" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#085041" font-weight="500">RR</text>
+            <!-- Forward arrows on wheels -->
+            <line x1="62" y1="90" x2="62" y2="56" stroke="#1D9E75" stroke-width="2" marker-end="url(#a-fwd)"/>
+            <line x1="62" y1="178" x2="62" y2="144" stroke="#1D9E75" stroke-width="2" marker-end="url(#a-fwd)"/>
+            <line x1="238" y1="90" x2="238" y2="56" stroke="#1D9E75" stroke-width="2" marker-end="url(#a-fwd)"/>
+            <line x1="238" y1="178" x2="238" y2="144" stroke="#1D9E75" stroke-width="2" marker-end="url(#a-fwd)"/>
+            <!-- Overall motion arrow -->
+            <line x1="150" y1="78" x2="150" y2="30" stroke="#1D9E75" stroke-width="2.5" marker-end="url(#a-fwd)" stroke-dasharray="4 3"/>
+            <text x="150" y="290" text-anchor="middle" font-size="11" font-family="var(--font-sans)" fill="var(--color-text-secondary)">All wheels: <tspan font-weight="500" fill="#0F6E56">+V (forward)</tspan></text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-label">Motor driver wiring logic (L298N)</p>
+    <div class="card">
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#E1F5EE"><i class="ti ti-arrow-up" style="font-size:14px;color:#0F6E56" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Left side (L298N #1): IN1=HIGH, IN2=LOW, IN3=HIGH, IN4=LOW</div><div class="rule-detail">Both left channels driven forward. ENA and ENB carry PWM value V.</div></div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#E1F5EE"><i class="ti ti-arrow-up" style="font-size:14px;color:#0F6E56" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Right side (L298N #2): IN1=HIGH, IN2=LOW, IN3=HIGH, IN4=LOW</div><div class="rule-detail">Both right channels driven forward. ENA (pin 8) and ENB (pin 9) carry PWM value V.</div></div>
+      </div>
+      <div class="warn-box"><strong>Polarity note:</strong> If your robot turns instead of going straight, one motor is wired in reverse polarity. Swap motor terminals on that side — do not compensate in firmware.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════ BACKWARD ══════════════════════════════ -->
+  <div class="panel" id="panel-backward">
+    <div class="two-col" style="margin-bottom:16px">
+      <div>
+        <p class="section-label">Command</p>
+        <div class="card">
+          <span class="pill pill-bwd">BACKWARD</span>
+          <div class="code-box">SPD:-V:-V<br><span style="color:var(--color-text-secondary)">// V = 0..255 (negative = reverse)</span></div>
+          <div class="code-box" style="margin-top:6px">BCK:V<span style="color:var(--color-text-secondary)"><br>// shorthand wrapper</span></div>
+          <p class="section-label gap-top">Wheel truth table</p>
+          <table class="wheel-table">
+            <tr><th>Wheel</th><th>Direction</th><th>Speed (PWM)</th></tr>
+            <tr><td>Front-Left</td><td>▼ Reverse</td><td><span class="speed-tag neg">−V</span></td></tr>
+            <tr><td>Rear-Left</td><td>▼ Reverse</td><td><span class="speed-tag neg">−V</span></td></tr>
+            <tr><td>Front-Right</td><td>▼ Reverse</td><td><span class="speed-tag neg">−V</span></td></tr>
+            <tr><td>Rear-Right</td><td>▼ Reverse</td><td><span class="speed-tag neg">−V</span></td></tr>
+          </table>
+          <div class="tip-box" style="margin-top:10px"><strong>Rule:</strong> All four wheels spin at equal negative speed. IN1/IN3 go LOW, IN2/IN4 go HIGH to reverse motor polarity. Magnitude of PWM is identical on both sides.</div>
+        </div>
+      </div>
+      <div>
+        <p class="section-label">Wheel diagram</p>
+        <div class="card">
+          <svg width="100%" viewBox="0 0 300 320" role="img">
+            <title>Backward movement — all four wheels turning in reverse</title>
+            <desc>Top view of the robot with all four wheels highlighted blue and arrows pointing downward (rearward).</desc>
+            <defs>
+              <marker id="a-bwd" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="#185FA5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </marker>
+            </defs>
+            <rect x="80" y="80" width="140" height="160" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+            <text x="150" y="156" text-anchor="middle" dominant-baseline="central" font-size="12" font-family="var(--font-sans)" fill="#185FA5" font-weight="500">ROBOT</text>
+            <text x="150" y="173" text-anchor="middle" dominant-baseline="central" font-size="11" font-family="var(--font-sans)" fill="#378ADD">top view</text>
+            <text x="150" y="60" text-anchor="middle" font-size="11" font-family="var(--font-sans)" fill="var(--color-text-secondary)">FRONT ▲</text>
+            <!-- FL -->
+            <rect x="44" y="90" width="36" height="52" rx="4" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5"/>
+            <text x="62" y="117" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#042C53" font-weight="500">FL</text>
+            <!-- RL -->
+            <rect x="44" y="178" width="36" height="52" rx="4" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5"/>
+            <text x="62" y="205" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#042C53" font-weight="500">RL</text>
+            <!-- FR -->
+            <rect x="220" y="90" width="36" height="52" rx="4" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5"/>
+            <text x="238" y="117" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#042C53" font-weight="500">FR</text>
+            <!-- RR -->
+            <rect x="220" y="178" width="36" height="52" rx="4" fill="#85B7EB" stroke="#185FA5" stroke-width="1.5"/>
+            <text x="238" y="205" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#042C53" font-weight="500">RR</text>
+            <!-- Reverse arrows -->
+            <line x1="62" y1="142" x2="62" y2="172" stroke="#185FA5" stroke-width="2" marker-end="url(#a-bwd)"/>
+            <line x1="62" y1="230" x2="62" y2="260" stroke="#185FA5" stroke-width="2" marker-end="url(#a-bwd)"/>
+            <line x1="238" y1="142" x2="238" y2="172" stroke="#185FA5" stroke-width="2" marker-end="url(#a-bwd)"/>
+            <line x1="238" y1="230" x2="238" y2="260" stroke="#185FA5" stroke-width="2" marker-end="url(#a-bwd)"/>
+            <!-- Overall motion -->
+            <line x1="150" y1="242" x2="150" y2="285" stroke="#185FA5" stroke-width="2.5" marker-end="url(#a-bwd)" stroke-dasharray="4 3"/>
+            <text x="150" y="305" text-anchor="middle" font-size="11" font-family="var(--font-sans)" fill="var(--color-text-secondary)">All wheels: <tspan font-weight="500" fill="#185FA5">−V (reverse)</tspan></text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-label">Motor driver wiring logic (L298N)</p>
+    <div class="card">
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#E6F1FB"><i class="ti ti-arrow-down" style="font-size:14px;color:#185FA5" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Left side (L298N #1): IN1=LOW, IN2=HIGH, IN3=LOW, IN4=HIGH</div><div class="rule-detail">Inverted from forward. PWM magnitude = abs(−V) on ENA (pin 5) and ENB (pin 6).</div></div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#E6F1FB"><i class="ti ti-arrow-down" style="font-size:14px;color:#185FA5" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Right side (L298N #2): IN1=LOW, IN2=HIGH, IN3=LOW, IN4=HIGH</div><div class="rule-detail">Inverted from forward. PWM magnitude = abs(−V) on ENA (pin 8) and ENB (pin 9).</div></div>
+      </div>
+      <div class="warn-box"><strong>Sign handling:</strong> The Mega firmware converts the signed SPD value into direction bits + unsigned PWM magnitude. Never pass a negative value directly to analogWrite().</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════ ROTATE ══════════════════════════════ -->
+  <div class="panel" id="panel-rotate">
+    <div class="two-col" style="margin-bottom:16px">
+      <div>
+        <p class="section-label">Command</p>
+        <div class="card">
+          <span class="pill pill-rot">ROTATE IN PLACE</span>
+          <div class="code-box">
+            <span style="color:var(--color-text-secondary)">// Clockwise (right):</span><br>
+            SPD:+V:-V<br><br>
+            <span style="color:var(--color-text-secondary)">// Counter-clockwise (left):</span><br>
+            SPD:-V:+V
+          </div>
+          <p class="section-label gap-top">Wheel truth table — CW rotation</p>
+          <table class="wheel-table">
+            <tr><th>Wheel</th><th>Direction</th><th>Speed</th></tr>
+            <tr><td>Front-Left</td><td>▲ Forward</td><td><span class="speed-tag pos">+V</span></td></tr>
+            <tr><td>Rear-Left</td><td>▲ Forward</td><td><span class="speed-tag pos">+V</span></td></tr>
+            <tr><td>Front-Right</td><td>▼ Reverse</td><td><span class="speed-tag neg">−V</span></td></tr>
+            <tr><td>Rear-Right</td><td>▼ Reverse</td><td><span class="speed-tag neg">−V</span></td></tr>
+          </table>
+          <div class="tip-box" style="margin-top:10px"><strong>Rule:</strong> Left side and right side spin at equal speed in <em>opposite</em> directions. The robot pivots around its own center. No translation — only rotation.</div>
+        </div>
+      </div>
+      <div>
+        <p class="section-label">Wheel diagram — clockwise rotation</p>
+        <div class="card">
+          <svg width="100%" viewBox="0 0 300 320" role="img">
+            <title>Rotate in place — left wheels forward, right wheels reverse, robot turns clockwise</title>
+            <desc>Top view of the robot. Left wheels are green with upward arrows. Right wheels are red with downward arrows. A circular arrow indicates clockwise rotation.</desc>
+            <defs>
+              <marker id="a-fwd2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </marker>
+              <marker id="a-rev2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="#A32D2D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </marker>
+              <marker id="a-rot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="#BA7517" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </marker>
+            </defs>
+            <rect x="80" y="80" width="140" height="160" rx="10" fill="#FAEEDA" stroke="#BA7517" stroke-width="1.5"/>
+            <text x="150" y="152" text-anchor="middle" dominant-baseline="central" font-size="12" font-family="var(--font-sans)" fill="#633806" font-weight="500">ROBOT</text>
+            <text x="150" y="170" text-anchor="middle" dominant-baseline="central" font-size="11" font-family="var(--font-sans)" fill="#854F0B">CW ↻</text>
+            <text x="150" y="60" text-anchor="middle" font-size="11" font-family="var(--font-sans)" fill="var(--color-text-secondary)">FRONT ▲</text>
+            <!-- Left wheels (green = forward) -->
+            <rect x="44" y="90" width="36" height="52" rx="4" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.5"/>
+            <text x="62" y="117" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#085041" font-weight="500">FL</text>
+            <rect x="44" y="178" width="36" height="52" rx="4" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.5"/>
+            <text x="62" y="205" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#085041" font-weight="500">RL</text>
+            <!-- Right wheels (red = reverse) -->
+            <rect x="220" y="90" width="36" height="52" rx="4" fill="#F09595" stroke="#A32D2D" stroke-width="1.5"/>
+            <text x="238" y="117" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#501313" font-weight="500">FR</text>
+            <rect x="220" y="178" width="36" height="52" rx="4" fill="#F09595" stroke="#A32D2D" stroke-width="1.5"/>
+            <text x="238" y="205" text-anchor="middle" dominant-baseline="central" font-size="9" font-family="var(--font-sans)" fill="#501313" font-weight="500">RR</text>
+            <!-- Left arrows: forward (up) -->
+            <line x1="62" y1="90" x2="62" y2="56" stroke="#1D9E75" stroke-width="2" marker-end="url(#a-fwd2)"/>
+            <line x1="62" y1="178" x2="62" y2="144" stroke="#1D9E75" stroke-width="2" marker-end="url(#a-fwd2)"/>
+            <!-- Right arrows: reverse (down) -->
+            <line x1="238" y1="142" x2="238" y2="172" stroke="#A32D2D" stroke-width="2" marker-end="url(#a-rev2)"/>
+            <line x1="238" y1="230" x2="238" y2="260" stroke="#A32D2D" stroke-width="2" marker-end="url(#a-rev2)"/>
+            <!-- Rotation arc -->
+            <path d="M 150 100 A 50 50 0 1 1 149 100" fill="none" stroke="#BA7517" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#a-rot)" stroke-linecap="round"/>
+            <text x="150" y="298" text-anchor="middle" font-size="11" font-family="var(--font-sans)" fill="var(--color-text-secondary)">Left <tspan fill="#0F6E56">+V</tspan> · Right <tspan fill="#A32D2D">−V</tspan></text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-label">Motor driver wiring logic (L298N)</p>
+    <div class="card">
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#E1F5EE"><i class="ti ti-arrow-up" style="font-size:14px;color:#0F6E56" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Left side (L298N #1): forward configuration — IN1=HIGH, IN2=LOW, IN3=HIGH, IN4=LOW</div><div class="rule-detail">ENA (pin 5) and ENB (pin 6) carry PWM value +V.</div></div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FCEBEB"><i class="ti ti-arrow-down" style="font-size:14px;color:#A32D2D" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Right side (L298N #2): reverse configuration — IN1=LOW, IN2=HIGH, IN3=LOW, IN4=HIGH</div><div class="rule-detail">ENA (pin 8) and ENB (pin 9) carry PWM value V (magnitude of −V).</div></div>
+      </div>
+      <div class="warn-box"><strong>Rotation not working?</strong> The most common cause is the right-side direction bits being wrong. Verify IN pins 36–39 against the hardware spec. If the robot arcs instead of pivoting, one motor pair polarity is inverted — correct with motor terminal swap, not firmware.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════ JITTER FIX ══════════════════════════════ -->
+  <div class="panel" id="panel-jitter">
+    <p class="section-label">Root causes of jitter during forward motion</p>
+    <div class="card" style="margin-bottom:16px">
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FAEEDA"><span style="font-size:13px;color:#854F0B;font-weight:500">1</span></div>
+        <div>
+          <div class="rule-label">Joystick deadband missing or too small</div>
+          <div class="rule-detail">Small center-drift on the Blynk joystick generates tiny nonzero X values. The differential mix converts these into left ≠ right commands. The robot constantly micro-corrects, producing jitter.</div>
+          <div class="code-box">
+// In ESP32 differential mix:<br>
+const int DEADBAND = 10;  // tune 5–15<br>
+if (abs(x) &lt; DEADBAND) x = 0;<br>
+if (abs(y) &lt; DEADBAND) y = 0;<br>
+int left  = constrain(y + x/2, -255, 255);<br>
+int right = constrain(y - x/2, -255, 255);
+          </div>
+        </div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FAEEDA"><span style="font-size:13px;color:#854F0B;font-weight:500">2</span></div>
+        <div>
+          <div class="rule-label">SPD command flooding — sending too fast</div>
+          <div class="rule-detail">Blynk joystick events fire at 50ms. If every tiny XY change sends a new SPD, the Mega receives dozens of micro-corrections per second. Add a change threshold before transmitting.</div>
+          <div class="code-box">
+// Only send if command changed significantly:<br>
+if (abs(newLeft - lastLeft) &gt; 3 ||<br>
+    abs(newRight - lastRight) &gt; 3) {<br>
+  sendSPD(newLeft, newRight);<br>
+  lastLeft = newLeft; lastRight = newRight;<br>
+}
+          </div>
+        </div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FAEEDA"><span style="font-size:13px;color:#854F0B;font-weight:500">3</span></div>
+        <div>
+          <div class="rule-label">Mismatched motor polarity causing oscillation</div>
+          <div class="rule-detail">If one side's IN pins are wired backward, the Mega tries to go forward while the firmware simultaneously corrects, producing rapid direction flips. Test each motor side with motor_tst.ino in isolation before using SPD commands.</div>
+        </div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FAEEDA"><span style="font-size:13px;color:#854F0B;font-weight:500">4</span></div>
+        <div>
+          <div class="rule-label">PWM too low — motors stall and restart</div>
+          <div class="rule-detail">Below a motor-specific minimum PWM (often 60–80 for cheap DC motors), motors receive insufficient voltage to overcome static friction and stall. The result looks like jitter. Enforce a minimum output when nonzero.</div>
+          <div class="code-box">
+// In Mega setMotorSpeed helper:<br>
+const int MIN_PWM = 70;<br>
+int applyMin(int pwm) {<br>
+  if (pwm == 0) return 0;<br>
+  return (pwm &gt; 0) ? max(pwm, MIN_PWM)<br>
+                    : min(pwm, -MIN_PWM);<br>
+}
+          </div>
+        </div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FAEEDA"><span style="font-size:13px;color:#854F0B;font-weight:500">5</span></div>
+        <div>
+          <div class="rule-label">UART parse errors causing spurious STOP commands</div>
+          <div class="rule-detail">Partial line delivery or a noisy UART2 link can cause the Mega to receive malformed frames. It responds with ERR and falls to safe-stop, interrupting forward motion intermittently. Check for shared GND between ESP32 and Mega, and verify your line buffer is flushed correctly on newline.</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-label">Rotate not working — checklist</p>
+    <div class="card">
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FCEBEB"><i class="ti ti-x" style="font-size:13px;color:#A32D2D" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Check: are you sending SPD:+V:−V or LEFT:V?</div><div class="rule-detail">The LEFT:V command uses a predefined turn behavior (arc, not pivot). For true in-place rotation you must use SPD:+V:−V explicitly.</div></div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FCEBEB"><i class="ti ti-x" style="font-size:13px;color:#A32D2D" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Check: right side IN pins 36–39 in firmware</div><div class="rule-detail">If right-side IN pins are inverted in firmware, SPD:+V:−V sends both sides forward → straight ahead, not pivot. Verify mega.ino right-side direction logic against hardware spec pins 36–39.</div></div>
+      </div>
+      <div class="rule-row">
+        <div class="rule-icon" style="background:#FCEBEB"><i class="ti ti-x" style="font-size:13px;color:#A32D2D" aria-hidden="true"></i></div>
+        <div><div class="rule-label">Check: motor polarity confirmed with motor_tst.ino first</div><div class="rule-detail">Run T01 from the validation spec before testing SPD commands. Hardware polarity and firmware direction bits must be confirmed in isolation before combining.</div></div>
+      </div>
+      <div class="tip-box"><strong>Quick pivot test:</strong> Send SPD:150:-150 from the serial monitor. Both sides should visibly spin in opposite directions (left forward, right backward). If the robot drifts forward instead, the right side direction bits are wrong. If it spins in the wrong rotational direction, swap left and right in the command.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+</script>

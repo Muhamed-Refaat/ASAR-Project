@@ -1,0 +1,31 @@
+# ASAR Project Agent Rules & Context (.clinerules)
+
+You are working on the Autonomous & Semi-Autonomous Robot (ASAR) Project. Always follow these rules, guidelines, and context references when writing or editing code for this project.
+
+## Project Structure
+- [esp/esp.ino](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/esp/esp.ino) - ESP32 firmware (WebSocket server, WiFi setup, and UART2 master relay).
+- [mega/mega.ino](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/mega/mega.ino) - Arduino Mega 2560 firmware (low-level motor/sensor controls, encoder interrupts, ultrasonic polling, buzzer/LED indicators, and MPU-6050 vibration filtering).
+- [tst/motor_tst.ino](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/tst/motor_tst.ino) - Motor driver testing/debugging tool.
+- [MobileAPP/](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/MobileAPP) - Frontend Vite + TS + Capacitor mobile application.
+- [CONTEXT.md](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/CONTEXT.md) - System context, architecture, pin layouts, and protocols.
+- [INSTRUCTIONS.md](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/INSTRUCTIONS.md) - Environment setup, compiler, flashing instructions, and test guide.
+
+## Key Development Rules
+
+1. **Protocol Synchronization**:
+   - Any UART command or telemetry prefix added/modified in `esp/esp.ino` **must** have a corresponding parser/sender in `mega/mega.ino`, and vice versa.
+   - Refer to [CONTEXT.md](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/CONTEXT.md) for the exact UART packet structure (`COMMAND:VALUE\n`).
+
+2. **Non-Blocking Execution (Critical)**:
+   - Do **NOT** use `delay()` in loop execution for either the ESP32 or Mega. Use non-blocking timing structures using `millis()`.
+   - The ESP32's `loop()` and the Mega's `loop()` must remain highly responsive to handle rapid incoming serial bytes and WebSocket payloads.
+
+3. **Pins and Hardware Map**:
+   - Always verify that new pins do not conflict with existing sensor/driver allocations.
+   - Refer to [CONTEXT.md](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/CONTEXT.md) section 2 for the pin matrix before allocating resources.
+
+4. **Documentation**:
+   - Keep comments descriptive and update [CONTEXT.md](file:///C:/Users/Mohamed%20Allam/Documents/Arduino/ASAR-Project/CONTEXT.md) immediately if hardware pins, command definitions, or protocols change.
+
+5. **Code Style**:
+   - Keep Arduino code modular and leverage `constexpr` for pins, constants, and protocols rather than `#define` macro preprocessors wherever possible.

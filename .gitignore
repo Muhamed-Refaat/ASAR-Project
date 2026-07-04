@@ -1,0 +1,20 @@
+# Arduino Build and IDE artifacts
+build/
+logs/
+compile.log
+.gemini/
+*.tmp
+*.bak
+*.local
+.vscode/
+
+# Mobile APP dependencies & build outputs (redundancy check)
+MobileAPP/node_modules/
+MobileAPP/dist/
+MobileAPP/.env
+MobileAPP/.env.local
+MobileAPP/.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,6 @@
+{
+  "name": "Industrial Control Interface",
+  "description": "A high-precision, mission-control dashboard for robotic systems with live telemetry, drive vector control, and distance awareness.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
