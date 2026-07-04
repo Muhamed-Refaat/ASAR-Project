@@ -28,6 +28,13 @@ export default function DiagnosticsPanel({
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const terminalEndRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const [tests, setTests] = useState<TestItem[]>([
     // Category: Connection
@@ -147,11 +154,17 @@ export default function DiagnosticsPanel({
 
       setIsRunning(false);
       setLastDiagLine(''); // Reset connected telemetry frame
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
     }
   }, [isRunning, lastDiagLine, setLastDiagLine]);
 
   const handleStartDiagnostics = () => {
     if (!connected) return;
+
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     setIsRunning(true);
     setLastDiagLine('');
@@ -177,6 +190,21 @@ export default function DiagnosticsPanel({
 
     // Trigger diagnostics on microcontroller
     sendCommand('DIAG_START');
+
+    // Start a 10-second timeout watchdog
+    timeoutRef.current = setTimeout(() => {
+      setIsRunning(false);
+      addLog(`[TIMEOUT] Diagnostics timed out. No response received from robot after 10s.`);
+      addLog(`Please check physical connection, power, and Wi-Fi networks.`);
+      setTests((prev) =>
+        prev.map((t) => {
+          if (t.status === 'idle' || t.status === 'running') {
+            return { ...t, status: 'fail', detail: 'TIMEOUT - No Response' };
+          }
+          return t;
+        })
+      );
+    }, 10000);
   };
 
   const getStatusBadge = (status: TestItem['status'], detail?: string) => {
