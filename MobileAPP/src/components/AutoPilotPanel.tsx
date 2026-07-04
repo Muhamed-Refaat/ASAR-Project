@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Target, Flag, Zap, ShieldAlert, Navigation2 } from 'lucide-react';
+import { Target, Flag, ShieldAlert, Navigation2, Zap, RotateCcw } from 'lucide-react';
 
 interface AutoPilotPanelProps {
   robotReady: boolean;
@@ -10,6 +10,9 @@ interface AutoPilotPanelProps {
   autopilotCmdLeft: number;
   autopilotCmdRight: number;
   autopilotLastEvent: string;
+  posX?: number;
+  posY?: number;
+  heading?: number;
   distLeft: number;
   distFront: number;
   distRight: number;
@@ -17,9 +20,13 @@ interface AutoPilotPanelProps {
   sendCommand: (cmd: string) => void;
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
+const PRESET_ROUNDS = [
+  { x: 1000, y: 0, label: "Round 1 (x1, y1)" },
+  { x: 1000, y: 1000, label: "Round 2 (x2, y2)" },
+  { x: 0, y: 1000, label: "Round 3 (x3, y3)" },
+  { x: 0, y: 0, label: "Round 4 (x4, y4)" },
+  { x: 1500, y: 1500, label: "Round 5 (Final Target)" }
+];
 
 export default function AutoPilotPanel({
   robotReady,
@@ -30,22 +37,40 @@ export default function AutoPilotPanel({
   autopilotCmdLeft,
   autopilotCmdRight,
   autopilotLastEvent,
+  posX = 0,
+  posY = 0,
+  heading = 0,
   distLeft,
   distFront,
   distRight,
   distBack,
   sendCommand,
 }: AutoPilotPanelProps) {
-  // Simplified Config
-  // Mission State
   const [targetDist, setTargetDist] = useState(5.0);
   const [targetAngle, setTargetAngle] = useState(0);
 
+  const [absX, setAbsX] = useState(0);
+  const [absY, setAbsY] = useState(0);
+  const [currentRound, setCurrentRound] = useState(0);
+
   const canControl = robotReady && isLeader;
 
-  const startMission = () => {
+  const startRelativeMission = () => {
     if (!canControl) return;
     sendCommand(`GOAL:${targetDist}:${targetAngle}`);
+  };
+
+  const startAbsoluteMission = () => {
+    if (!canControl) return;
+    sendCommand(`ABS_GOAL:${absX}:${absY}`);
+  };
+
+  const startPresetRound = (index: number) => {
+    if (!canControl) return;
+    setCurrentRound(index);
+    setAbsX(PRESET_ROUNDS[index].x);
+    setAbsY(PRESET_ROUNDS[index].y);
+    sendCommand(`ABS_GOAL:${PRESET_ROUNDS[index].x}:${PRESET_ROUNDS[index].y}`);
   };
 
   const toggleAutopilot = () => {
@@ -84,28 +109,60 @@ export default function AutoPilotPanel({
 
         <div className="mt-4 grid grid-cols-2 gap-3 text-center">
           <div className="rounded-xl bg-surface-container-high p-3 border border-white/10">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">collision risk</p>
-            <p className={`font-mono text-xl font-bold ${autopilotRisk > 60 ? 'text-error' : 'text-primary'}`}>{Math.round(autopilotRisk)}%</p>
-            <p className="font-mono text-[9px] uppercase text-on-surface-variant">{riskLabel}</p>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">Odometry</p>
+            <p className="font-mono text-sm font-bold text-secondary flex justify-center gap-2 mt-1">
+              <span>X:{Math.round(posX)}</span>
+              <span>Y:{Math.round(posY)}</span>
+            </p>
+            <p className="font-mono text-[9px] uppercase text-on-surface-variant mt-1">Yaw: {Math.round(heading)}°</p>
           </div>
           <div className="rounded-xl bg-surface-container-high p-3 border border-white/10">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">drive output</p>
-            <p className="font-mono text-lg font-bold text-secondary">{autopilotCmdLeft}:{autopilotCmdRight}</p>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">Output</p>
+            <p className="font-mono text-lg font-bold text-secondary mt-1">{autopilotCmdLeft}:{autopilotCmdRight}</p>
             <p className="font-mono text-[9px] uppercase text-on-surface-variant">L:R PWM</p>
           </div>
         </div>
 
         <p className="mt-3 font-mono text-[9px] text-on-surface-variant uppercase tracking-wider text-center bg-black/20 py-1 rounded-md">
-          Telemetry: L:{distLeft.toFixed(0)} F:{distFront.toFixed(0)} R:{distRight.toFixed(0)} B:{distBack.toFixed(0)} | Event: {autopilotLastEvent || 'IDLE'}
+          Risk: {Math.round(autopilotRisk)}% ({riskLabel}) | Event: {autopilotLastEvent || 'IDLE'}
         </p>
       </div>
 
+      {/* 5-Round Absolute Pathing Simulator */}
+      <div className="p-4 rounded-2xl glass-panel space-y-4">
+        <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+          <RotateCcw className="w-4 h-4 text-tertiary" />
+          <h3 className="font-mono text-[10px] font-black uppercase tracking-widest text-on-surface">5-Round Self-Evolve Path</h3>
+        </div>
+        <p className="text-[10px] text-on-surface-variant font-mono">
+          Execute a 5-round evolutionary test loop. The robot will dynamically avoid obstacles while navigating to these absolute coordinate checkpoints.
+        </p>
+        <div className="grid grid-cols-1 gap-2">
+          {PRESET_ROUNDS.map((round, idx) => (
+            <button
+              key={idx}
+              onClick={() => startPresetRound(idx)}
+              disabled={!canControl || autopilotEnabled}
+              className={`flex items-center justify-between py-2 px-4 rounded-xl border transition-all ${
+                !canControl || autopilotEnabled 
+                  ? 'bg-surface-container-highest border-white/5 text-on-surface-variant/50 cursor-not-allowed' 
+                  : currentRound === idx 
+                    ? 'bg-tertiary/10 border-tertiary text-tertiary hover:bg-tertiary/20' 
+                    : 'bg-surface-container-high border-white/10 text-on-surface hover:border-white/20'
+              }`}
+            >
+              <span className="font-sans text-[11px] font-bold uppercase">{round.label}</span>
+              <span className="font-mono text-[10px]">X:{round.x} Y:{round.y}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {/* Mission Planning */}
+      {/* Relative Mission Planning */}
       <div className="p-4 rounded-2xl glass-panel space-y-4">
         <div className="flex items-center gap-2 border-b border-white/5 pb-2">
           <Navigation2 className="w-4 h-4 text-secondary" />
-          <h3 className="font-mono text-[10px] font-black uppercase tracking-widest text-on-surface">Mission Objective</h3>
+          <h3 className="font-mono text-[10px] font-black uppercase tracking-widest text-on-surface">Relative Navigation</h3>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -144,26 +201,22 @@ export default function AutoPilotPanel({
         </div>
 
         <button
-          onClick={startMission}
+          onClick={startRelativeMission}
           disabled={!canControl || autopilotEnabled}
           className={`w-full py-3 rounded-xl font-sans text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${!canControl || autopilotEnabled ? 'bg-surface-container-highest text-on-surface/30 cursor-not-allowed' : 'bg-secondary text-surface shadow-lg hover:brightness-110'}`}
         >
-          <Target className="w-4 h-4" />
-          Initiate Autonomous Navigation
+          <Target className="w-4 h-4" /> Go Relative Goal
         </button>
       </div>
 
-
-
-      <div className="p-4 rounded-2xl glass-panel">
-        <h3 className="font-mono text-[9px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Protocol Reference</h3>
-        <ul className="space-y-1.5 text-[10px] text-on-surface-variant/80 font-sans" id="autopilot-instructions">
-          <li className="flex items-start gap-2"><Flag className="w-3 h-3 shrink-0 mt-0.5" /> Start mission to set a vector goal relative to current position.</li>
-          <li className="flex items-start gap-2"><Navigation2 className="w-3 h-3 shrink-0 mt-0.5" /> Robot uses odometry for pathing and ultrasonics for active avoidance.</li>
-          <li className="flex items-start gap-2"><Zap className="w-3 h-3 shrink-0 mt-0.5" /> Bias + prefers Left turns, - prefers Right turns during avoidance.</li>
+      <div className="p-4 rounded-2xl border border-white/5 bg-black/40">
+        <h4 className="font-mono text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">How it works:</h4>
+        <ul className="space-y-2 font-mono text-[8px] text-on-surface-variant/80">
+          <li className="flex items-start gap-2"><Target className="w-3 h-3 shrink-0 mt-0.5" /> P-Controller gently guides heading towards the virtual target coordinate.</li>
+          <li className="flex items-start gap-2"><Flag className="w-3 h-3 shrink-0 mt-0.5" /> Potential-Field Blending seamlessly pushes coordinates away from obstacles while pursuing goal.</li>
+          <li className="flex items-start gap-2"><Zap className="w-3 h-3 shrink-0 mt-0.5" /> 5-Round Simulator executes independent autonomous coordinate stages.</li>
         </ul>
       </div>
     </div>
   );
 }
-

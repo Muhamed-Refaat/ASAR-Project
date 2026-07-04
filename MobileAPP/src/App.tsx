@@ -157,6 +157,9 @@ export default function App() {
               autopilotCmdLeft={robot.autopilotCmdLeft}
               autopilotCmdRight={robot.autopilotCmdRight}
               autopilotLastEvent={robot.autopilotLastEvent}
+              posX={robot.posX}
+              posY={robot.posY}
+              heading={robot.heading}
               distLeft={robot.distLeft}
               distFront={robot.distFront}
               distRight={robot.distRight}

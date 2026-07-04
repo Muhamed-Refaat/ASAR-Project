@@ -51,6 +51,9 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
   const [autopilotPhase, setAutopilotPhase] = useState('OFF');
   const [autopilotCmdLeft, setAutopilotCmdLeft] = useState(0);
   const [autopilotCmdRight, setAutopilotCmdRight] = useState(0);
+  const [posX, setPosX] = useState(0);
+  const [posY, setPosY] = useState(0);
+  const [heading, setHeading] = useState(0);
   const [autopilotRisk, setAutopilotRisk] = useState(0);
   const [autopilotLastEvent, setAutopilotLastEvent] = useState('');
   const [rpmHistory, setRpmHistory] = useState<{ val: number }[]>([]);
@@ -302,6 +305,9 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
               setAutopilotPhase(parts[1] || 'OFF');
               setAutopilotCmdLeft(parseFloat(parts[2]) || 0);
               setAutopilotCmdRight(parseFloat(parts[3]) || 0);
+              setPosX(parseFloat(parts[4]) || 0);
+              setPosY(parseFloat(parts[5]) || 0);
+              setHeading(parseFloat(parts[6]) || 0);
               const risk = parseFloat(parts[7]) || 0;
               setAutopilotRisk(risk);
               setAutopilotRiskHistory((prev) => pushHistory(prev, risk));
@@ -383,6 +389,9 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
     autopilotPhase,
     autopilotCmdLeft,
     autopilotCmdRight,
+    posX,
+    posY,
+    heading,
     autopilotRisk,
     autopilotLastEvent,
     rpmHistory,

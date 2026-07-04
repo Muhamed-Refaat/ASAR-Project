@@ -23,6 +23,7 @@ constexpr const char* CMD_AUTO_OFF = "AUTO_OFF";
 constexpr const char* CMD_AUTO_CFG_PREFIX = "AUTO_CFG:";
 constexpr const char* CMD_ALIGN = "ALIGN";
 constexpr const char* CMD_GOAL_PREFIX = "GOAL:";
+constexpr const char* CMD_ABS_GOAL_PREFIX = "ABS_GOAL:";
 constexpr const char* CMD_MPU_ON = "MPU_ON";
 constexpr const char* CMD_MPU_OFF = "MPU_OFF";
 constexpr const char* CMD_MPU_REQ = "MPU_REQ";
@@ -72,6 +73,12 @@ constexpr uint8_t ECHO_PINS[4] = {29, 23, 25, 27};
 // Buzzer and status LED
 constexpr uint8_t BUZZER_PIN = 30;
 constexpr uint8_t STATUS_LED_PIN = 31;
+
+// Motor Direction Inversions (set to true if a wheel physically spins backward when commanded forward)
+constexpr bool INVERT_FL = false; // Front Left
+constexpr bool INVERT_RL = false; // Rear Left
+constexpr bool INVERT_FR = false; // Front Right
+constexpr bool INVERT_RR = false; // Rear Right
 
 // L298N #1 (left side)
 constexpr uint8_t L_IN1 = 32;
@@ -126,6 +133,7 @@ long lastRightOdoTicks = 0;
 
 // Goal
 bool hasGoal = false;
+bool hasGoalAligning = false;
 float targetX = 0.0f;
 float targetY = 0.0f;
 float goalToleranceMm = 150.0f;
@@ -327,10 +335,21 @@ void setMotorSide(int16_t speed, bool isLeftSide) {
   const uint8_t pwm = static_cast<uint8_t>(abs(clipped));
   const bool forward = clipped >= 0;
 
-  digitalWrite(in1, forward ? HIGH : LOW);
-  digitalWrite(in2, forward ? LOW : HIGH);
-  digitalWrite(in3, forward ? HIGH : LOW);
-  digitalWrite(in4, forward ? LOW : HIGH);
+  bool fwdFront = forward;
+  bool fwdRear = forward;
+
+  if (isLeftSide) {
+    if (INVERT_FL) fwdFront = !forward;
+    if (INVERT_RL) fwdRear = !forward;
+  } else {
+    if (INVERT_FR) fwdFront = !forward;
+    if (INVERT_RR) fwdRear = !forward;
+  }
+
+  digitalWrite(in1, fwdFront ? HIGH : LOW);
+  digitalWrite(in2, fwdFront ? LOW  : HIGH);
+  digitalWrite(in3, fwdRear ? HIGH : LOW);
+  digitalWrite(in4, fwdRear ? LOW  : HIGH);
 
   analogWrite(ena, pwm);
   analogWrite(enb, pwm);
@@ -902,11 +921,11 @@ void reportAutopilotStatus() {
   Serial2.print(':');
   Serial2.print(autoCmdRight);
   Serial2.print(':');
-  Serial2.print(distancesCm[1]);
+  Serial2.print(posX, 1);
   Serial2.print(':');
-  Serial2.print(distancesCm[0]);
+  Serial2.print(posY, 1);
   Serial2.print(':');
-  Serial2.print(distancesCm[2]);
+  Serial2.print(posTheta * 57.29578f, 1);
   Serial2.print(':');
   Serial2.println(autoRisk);
 }
@@ -1013,6 +1032,7 @@ void runAutopilot() {
 
       if (dist < goalToleranceMm) {
         hasGoal = false;
+        hasGoalAligning = false;
         disableAutopilot("GOAL_REACHED");
         stopDrive();
         return;
@@ -1023,20 +1043,48 @@ void runAutopilot() {
       while (errorTheta > PI_F) errorTheta -= 2*PI_F;
       while (errorTheta < -PI_F) errorTheta += 2*PI_F;
 
-      if (abs(errorTheta) > 0.45f) { // ~25 degrees
+      // Hysteresis for Alignment vs Driving
+      if (!hasGoalAligning && abs(errorTheta) > 0.60f) { // ~34 degrees
+        hasGoalAligning = true;
+      } else if (hasGoalAligning && abs(errorTheta) < 0.15f) { // ~8.5 degrees
+        hasGoalAligning = false;
+      }
+
+      if (hasGoalAligning) {
         // Rotate in place to align with goal
         int16_t ts = autoCfg.turnSpeed;
         if (errorTheta > 0) { leftMotor.target = -ts; rightMotor.target = ts; }
         else { leftMotor.target = ts; rightMotor.target = -ts; }
       } else {
-        // Drive towards goal with P-correction on heading
+        // Drive towards goal smoothly
         int16_t cs = autoCfg.cruiseSpeed;
-        // Slow down when close
-        if (dist < 400.0f) cs = map(static_cast<long>(dist), 0, 400, MIN_PWM + 20, autoCfg.cruiseSpeed);
-        // Reduce speed if obstacles are in caution range
-        if (front < autoCfg.cautionFrontCm) cs = cs / 2;
+        
+        // Smoothly decelerate near target
+        if (dist < 400.0f) {
+           cs = map(static_cast<long>(dist), 0, 400, MIN_PWM + 15, autoCfg.cruiseSpeed);
+        }
+        
+        // Potential Field Obstacle Avoidance Blending!
+        // Push errorTheta away from obstacles seamlessly
+        float avoidSteer = 0.0f;
+        
+        // If left sensor detects wall < 50cm, repel to the right (positive rotation)
+        if (left < 50) avoidSteer += (50.0f - left) * 0.04f; 
+        
+        // If right sensor detects wall < 50cm, repel to the left (negative rotation)
+        if (right < 50) avoidSteer -= (50.0f - right) * 0.04f;
 
-        int correction = static_cast<int>(errorTheta * 180.0f);
+        // Combine steering vectors: goal seeking + obstacle repulsion
+        float combinedError = errorTheta + avoidSteer;
+        
+        // Compute differential correction
+        int correction = static_cast<int>(combinedError * 160.0f);
+        
+        // Reduce forward speed dynamically if steering correction is very high
+        if (abs(correction) > cs / 2) {
+          cs = cs / 2;
+        }
+
         leftMotor.target = constrain(cs - correction, -255, 255);
         rightMotor.target = constrain(cs + correction, -255, 255);
       }
@@ -1326,6 +1374,26 @@ void handleCommand(const String& line) {
       hasGoal = true;
       enableAutopilot();
       Serial2.println("ACK:GOAL");
+      return;
+    }
+    Serial2.println("ERR:BAD_ARG");
+    return;
+  }
+
+  if (line.startsWith(CMD_ABS_GOAL_PREFIX)) {
+    if (!isRunning()) {
+      Serial2.println("ERR:NOT_READY");
+      return;
+    }
+    int firstColon = line.indexOf(':', strlen(CMD_ABS_GOAL_PREFIX));
+    if (firstColon > 0) {
+      float x = line.substring(strlen(CMD_ABS_GOAL_PREFIX), firstColon).toFloat();
+      float y = line.substring(firstColon + 1).toFloat();
+      targetX = x;
+      targetY = y;
+      hasGoal = true;
+      enableAutopilot();
+      Serial2.println("ACK:ABS_GOAL");
       return;
     }
     Serial2.println("ERR:BAD_ARG");
@@ -1762,4 +1830,21 @@ void loop() {
   }
 
   tickBuzzer();
+}
+
+uint16_t readUltrasonic(uint8_t trig, uint8_t echo) {
+  for (uint8_t idx = 0; idx < 4; idx++) {
+    if (TRIG_PINS[idx] == trig) {
+      return sampleDistanceCm(idx);
+    }
+  }
+  return 0;
+}
+
+void setLeftMotors(int16_t pwm) {
+  setMotorSide(pwm, true);
+}
+
+void setRightMotors(int16_t pwm) {
+  setMotorSide(pwm, false);
 }
