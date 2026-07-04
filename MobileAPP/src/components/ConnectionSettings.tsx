@@ -190,7 +190,11 @@ export default function ConnectionSettings({
         <p className="mt-2 text-xs text-on-surface-variant">Tip: You can also try ws://robot.local:81 on local Wi-Fi.</p>
         <button
           onClick={() => onConnect(directIp, 'direct')}
-          className="mt-3 w-full py-2.5 rounded-xl bg-primary text-surface font-sans text-xs font-bold uppercase"
+          disabled={connected}
+          className={cn(
+            "mt-3 w-full py-2.5 rounded-xl bg-primary text-surface font-sans text-xs font-bold uppercase hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer",
+            connected && "opacity-40 cursor-not-allowed hover:brightness-100 active:scale-100"
+          )}
         >
           Connect Direct
         </button>
@@ -213,7 +217,11 @@ export default function ConnectionSettings({
         <p className="mt-2 text-xs text-on-surface-variant">Tip: Use relay mode when controlling over the internet.</p>
         <button
           onClick={() => onConnect(relayHost, 'relay')}
-          className="mt-3 w-full py-2.5 rounded-xl bg-primary text-surface font-sans text-xs font-bold uppercase"
+          disabled={connected}
+          className={cn(
+            "mt-3 w-full py-2.5 rounded-xl bg-primary text-surface font-sans text-xs font-bold uppercase hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer",
+            connected && "opacity-40 cursor-not-allowed hover:brightness-100 active:scale-100"
+          )}
         >
           Connect Relay
         </button>
