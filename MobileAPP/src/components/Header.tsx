@@ -1,4 +1,4 @@
-import { Menu, Wifi } from 'lucide-react';
+import { Terminal, Wifi } from 'lucide-react';
 
 interface HeaderProps {
   connected: boolean;
@@ -6,22 +6,25 @@ interface HeaderProps {
 }
 
 export default function Header({ connected, robotReady }: HeaderProps) {
-  const status = connected && robotReady ? 'LIVE' : connected ? 'LINKING...' : 'OFFLINE';
-  const wifiClass = connected && robotReady ? 'text-secondary' : connected ? 'text-yellow-400 animate-pulse' : 'text-error';
+  const status = connected && robotReady ? 'SYS_ONLINE' : connected ? 'LINKING...' : 'OFFLINE_DIS';
+  const wifiClass = connected && robotReady ? 'text-secondary glow-text-secondary' : connected ? 'text-warning animate-pulse' : 'text-error glow-text-error';
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-surface/80 backdrop-blur-md sticky top-0 z-50">
-      <div className="flex items-center gap-4">
-        <button className="p-2 hover:bg-white/5 rounded-lg transition-colors" id="menu-btn">
-          <Menu className="w-6 h-6 text-on-surface-variant" />
-        </button>
-        <h1 className="font-sans font-bold text-xl tracking-tight uppercase" id="app-title">
-          System Command
-        </h1>
+    <header className="flex items-center justify-between px-6 py-4 border-b border-primary/20 bg-surface/90 backdrop-blur-md sticky top-0 z-50 font-mono select-none crt-flicker">
+      <div className="flex items-center gap-3">
+        <div className="p-2 border border-primary/30 bg-primary/5 text-primary">
+          <Terminal className="w-5 h-5" />
+        </div>
+        <div className="flex flex-col">
+          <h1 className="font-bold text-sm tracking-widest text-primary uppercase glow-text-primary" id="app-title">
+            [ ASAR-4WD.OS ]
+          </h1>
+          <span className="text-[8px] text-on-surface-variant tracking-wider uppercase">ROBOTICS GATEWAY V6.02</span>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Wifi className={`w-5 h-5 ${wifiClass}`} />
-        <span className="font-mono text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">{status}</span>
+      <div className="flex items-center gap-3 bg-surface-container px-3 py-1.5 border border-primary/10">
+        <Wifi className={`w-4 h-4 ${wifiClass}`} />
+        <span className={`text-[10px] font-bold tracking-widest uppercase ${connected && robotReady ? 'text-secondary glow-text-secondary' : 'text-on-surface-variant'}`}>{status}</span>
       </div>
     </header>
   );

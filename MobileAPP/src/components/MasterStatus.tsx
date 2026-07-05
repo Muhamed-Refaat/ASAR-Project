@@ -35,40 +35,86 @@ export default function MasterStatus({ connected, robotReady, lastError }: Maste
   }, [lastEventAt]);
 
   const hasError = lastError.trim().length > 0;
-  const statusText = hasError ? `Error: ${lastError}` : connected && robotReady ? 'System Ready' : connected ? 'Connecting...' : 'Offline';
-  const statusColor = hasError ? 'text-error' : connected && robotReady ? 'text-secondary' : connected ? 'text-primary' : 'text-error';
+  
+  // Status state config mapping
+  const config = useMemo(() => {
+    if (hasError) {
+      return {
+        text: `FAULT: ${lastError}`,
+        colorClass: 'text-error glow-text-error',
+        borderClass: 'border-error/30',
+        cornerClass: 'cyber-corners-error',
+        bgGlow: 'bg-error/5',
+      };
+    }
+    if (connected && robotReady) {
+      return {
+        text: 'SYS_READY',
+        colorClass: 'text-secondary glow-text-secondary',
+        borderClass: 'border-secondary/30',
+        cornerClass: 'cyber-corners-secondary',
+        bgGlow: 'bg-secondary/5',
+      };
+    }
+    if (connected) {
+      return {
+        text: 'COM_LINKING',
+        colorClass: 'text-primary glow-text-primary',
+        borderClass: 'border-primary/30',
+        cornerClass: 'cyber-corners',
+        bgGlow: 'bg-primary/5',
+      };
+    }
+    return {
+      text: 'SYS_OFFLINE',
+      colorClass: 'text-error glow-text-error',
+      borderClass: 'border-error/20',
+      cornerClass: 'cyber-corners-error',
+      bgGlow: 'bg-error/2',
+    };
+  }, [connected, robotReady, lastError, hasError]);
 
   const segmentClasses = useMemo(() => {
-    if (connected && robotReady) return ['bg-secondary', 'bg-secondary', 'bg-secondary'];
-    if (connected && !robotReady) return ['bg-primary', 'bg-white/10', 'bg-white/10'];
-    return ['bg-white/10', 'bg-white/10', 'bg-white/10'];
+    if (connected && robotReady) return ['bg-secondary glow-secondary', 'bg-secondary glow-secondary', 'bg-secondary glow-secondary'];
+    if (connected && !robotReady) return ['bg-primary glow-primary', 'bg-white/5', 'bg-white/5'];
+    return ['bg-white/5', 'bg-white/5', 'bg-white/5'];
   }, [connected, robotReady]);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mx-4 mt-6 p-6 rounded-2xl glass-panel relative overflow-hidden"
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2 }}
+      className={`mx-4 mt-6 p-5 glass-panel border ${config.borderClass} ${config.cornerClass} ${config.bgGlow} relative overflow-hidden font-mono`}
       id="status-banner"
     >
-      <div className="flex justify-between items-start mb-6">
-        <span className="font-mono text-xs font-bold text-secondary tracking-widest uppercase">Master Status</span>
-        <div className="flex items-center gap-2 px-3 py-1 bg-secondary/10 border border-secondary/20 rounded-full">
-          <div className="w-1.5 h-1.5 bg-secondary rounded-full animate-pulse" />
-          <span className="font-mono text-[10px] font-bold text-secondary uppercase">Live Telemetry</span>
+      {/* Decorative grid element */}
+      <div className="absolute top-0 right-0 p-1 text-[8px] text-primary/10 select-none pointer-events-none">
+        0x00F0FF // ASAR_OS_BUFF
+      </div>
+
+      <div className="flex justify-between items-start mb-5">
+        <span className="text-[10px] font-bold text-primary tracking-widest uppercase glow-text-primary">
+          [ STATE_SUPERVISOR ]
+        </span>
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-secondary/15 border border-secondary/30">
+          <div className="w-1.5 h-1.5 bg-secondary rounded-none animate-pulse" />
+          <span className="text-[8px] font-bold text-secondary uppercase tracking-wider">TELEMETRY_FEED</span>
         </div>
       </div>
 
-      <div className="mb-2">
-        <h2 className={`font-sans text-4xl font-bold tracking-tight uppercase ${statusColor}`} id="status-text">{statusText}</h2>
-        <p className="font-mono text-sm text-on-surface-variant mt-1">
-          {lastEventAt ? `Last event: ${secondsAgo}s ago` : 'No events yet'}
+      <div className="mb-1">
+        <h2 className={`text-2xl font-black tracking-widest uppercase ${config.colorClass} truncate`} id="status-text">
+          {config.text}
+        </h2>
+        <p className="text-[9px] text-on-surface-variant tracking-wider uppercase mt-1.5">
+          {lastEventAt ? `LAST STATE EVENT_LOG: ${secondsAgo} SEC AGO` : 'NO PREVIOUS STATE TRANSTIONS'}
         </p>
       </div>
 
-      <div className="flex gap-1 mt-6 h-1 w-full bg-white/5 rounded-full overflow-hidden">
+      <div className="flex gap-1.5 mt-5 h-1 w-full bg-white/5">
         {segmentClasses.map((segmentClass, index) => (
-          <div key={index} className={`h-full w-1/3 rounded-full ${segmentClass}`} />
+          <div key={index} className={`h-full w-1/3 transition-all duration-300 ${segmentClass}`} />
         ))}
       </div>
     </motion.div>

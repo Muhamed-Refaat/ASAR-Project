@@ -1,47 +1,184 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap');
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-surface: #0b1326;
-  --color-surface-dim: #0b1326;
-  --color-surface-bright: #31394d;
-  --color-surface-container: #171f33;
-  --color-surface-container-low: #131b2e;
-  --color-surface-container-high: #222a3d;
-  --color-primary: #adc6ff;
-  --color-secondary: #4edea3;
-  --color-error: #ffb4ab;
+  --color-surface: #060a16;
+  --color-surface-dim: #03050c;
+  --color-surface-bright: #1b2640;
+  --color-surface-container: #0c152a;
+  --color-surface-container-low: #080d1b;
+  --color-surface-container-high: #14223f;
+  --color-primary: #00f0ff; /* Phosphor Cyan */
+  --color-secondary: #39ff14; /* Neon Green */
+  --color-tertiary: #ff007f; /* Cyber Pink */
+  --color-error: #ff3131; /* Laser Red */
+  --color-warning: #ffb000; /* Phosphor Amber */
   --color-on-surface: #dae2fd;
-  --color-on-surface-variant: #c2c6d6;
+  --color-on-surface-variant: #8ea1c4;
 
-  --radius-xl: 1.5rem;
-  --radius-lg: 1rem;
-  --radius-md: 0.75rem;
+  --radius-xl: 0px; /* Sharp corners are retro */
+  --radius-lg: 0px;
+  --radius-md: 0px;
 }
 
 @layer base {
   body {
-    @apply bg-surface text-on-surface antialiased selection:bg-primary/30;
+    @apply font-mono bg-surface text-on-surface antialiased selection:bg-primary/30 relative overflow-x-hidden;
+    background-image: linear-gradient(rgba(12, 21, 42, 0.3) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(12, 21, 42, 0.3) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* Scanline Overlay for Cyberpunk Vibe */
+  body::before {
+    content: " ";
+    display: block;
+    position: fixed;
+    top: 0; left: 0; bottom: 0; right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    aspect-ratio: auto;
+    background-size: 100% 4px, 6px 100%;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.85;
   }
 }
 
 @layer utilities {
   .glass-panel {
-    @apply bg-surface-container/60 backdrop-blur-xl border border-white/10;
+    @apply bg-surface-container/85 backdrop-blur-md border border-primary/20 relative;
+    box-shadow: inset 0 0 10px rgba(0, 240, 255, 0.05);
   }
-  
+
+  /* Cyber Bracket Borders */
+  .cyber-corners::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px; width: 8px; height: 8px;
+    border-top: 2px solid var(--color-primary);
+    border-left: 2px solid var(--color-primary);
+    pointer-events: none;
+  }
+  .cyber-corners::after {
+    content: "";
+    position: absolute;
+    bottom: -1px; right: -1px; width: 8px; height: 8px;
+    border-bottom: 2px solid var(--color-primary);
+    border-right: 2px solid var(--color-primary);
+    pointer-events: none;
+  }
+
+  .cyber-corners-secondary::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px; width: 8px; height: 8px;
+    border-top: 2px solid var(--color-secondary);
+    border-left: 2px solid var(--color-secondary);
+    pointer-events: none;
+  }
+  .cyber-corners-secondary::after {
+    content: "";
+    position: absolute;
+    bottom: -1px; right: -1px; width: 8px; height: 8px;
+    border-bottom: 2px solid var(--color-secondary);
+    border-right: 2px solid var(--color-secondary);
+    pointer-events: none;
+  }
+
+  .cyber-corners-tertiary::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px; width: 8px; height: 8px;
+    border-top: 2px solid var(--color-tertiary);
+    border-left: 2px solid var(--color-tertiary);
+    pointer-events: none;
+  }
+  .cyber-corners-tertiary::after {
+    content: "";
+    position: absolute;
+    bottom: -1px; right: -1px; width: 8px; height: 8px;
+    border-bottom: 2px solid var(--color-tertiary);
+    border-right: 2px solid var(--color-tertiary);
+    pointer-events: none;
+  }
+
+  .cyber-corners-error::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px; width: 8px; height: 8px;
+    border-top: 2px solid var(--color-error);
+    border-left: 2px solid var(--color-error);
+    pointer-events: none;
+  }
+  .cyber-corners-error::after {
+    content: "";
+    position: absolute;
+    bottom: -1px; right: -1px; width: 8px; height: 8px;
+    border-bottom: 2px solid var(--color-error);
+    border-right: 2px solid var(--color-error);
+    pointer-events: none;
+  }
+
+  /* Glow Effects */
+  .glow-text-primary {
+    text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+  }
+
+  .glow-text-secondary {
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.6);
+  }
+
+  .glow-text-tertiary {
+    text-shadow: 0 0 8px rgba(255, 0, 127, 0.6);
+  }
+
+  .glow-text-error {
+    text-shadow: 0 0 8px rgba(255, 49, 49, 0.6);
+  }
+
+  .glow-text-warning {
+    text-shadow: 0 0 8px rgba(255, 176, 0, 0.6);
+  }
+
   .glow-primary {
-    box-shadow: 0 0 20px rgba(173, 198, 255, 0.2);
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
   }
 
   .glow-secondary {
-    box-shadow: 0 0 20px rgba(78, 222, 163, 0.2);
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.25);
+  }
+
+  .glow-tertiary {
+    box-shadow: 0 0 15px rgba(255, 0, 127, 0.25);
   }
 
   .glow-error {
-    box-shadow: 0 0 20px rgba(255, 180, 171, 0.2);
+    box-shadow: 0 0 15px rgba(255, 49, 49, 0.25);
+  }
+
+  /* Micro flickering animation */
+  @keyframes crt-flicker {
+    0% { opacity: 0.985; }
+    50% { opacity: 0.995; }
+    100% { opacity: 0.985; }
+  }
+
+  .crt-flicker {
+    animation: crt-flicker 0.15s infinite;
+  }
+
+  /* Matrix-terminal blinking cursor */
+  @keyframes cursor-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
+  .terminal-cursor::after {
+    content: "▋";
+    animation: cursor-blink 1s infinite;
+    @apply ml-1 text-primary;
   }
 }

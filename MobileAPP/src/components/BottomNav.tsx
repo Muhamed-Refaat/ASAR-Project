@@ -16,7 +16,7 @@ export default function BottomNav({ active, onTabChange }: BottomNavProps) {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 glass-panel border-t border-white/5 pb-8 pt-3 px-6 flex items-center justify-between z-50">
+    <nav className="fixed bottom-0 left-0 right-0 glass-panel border-t border-primary/20 pb-6 pt-3 px-4 flex items-center justify-between z-50 font-mono select-none crt-flicker">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = active === item.id;
@@ -26,18 +26,23 @@ export default function BottomNav({ active, onTabChange }: BottomNavProps) {
             key={item.id}
             onClick={() => onTabChange(item.id)}
             className={cn(
-              "flex flex-col items-center gap-1 transition-all",
-              isActive ? "text-secondary" : "text-on-surface-variant hover:text-on-surface"
+              "flex flex-col items-center gap-1.5 transition-all flex-1 py-1.5 relative",
+              isActive ? "text-primary glow-text-primary" : "text-on-surface-variant hover:text-on-surface"
             )}
             id={`nav-${item.id}`}
           >
+            {/* Cyber bracket active background marker */}
+            {isActive && (
+              <div className="absolute inset-x-2 inset-y-0 border-t-2 border-primary/40 pointer-events-none" />
+            )}
+
             <div className={cn(
-              "p-2 rounded-xl transition-all",
-              isActive && "bg-secondary/10 shadow-[0_0_15px_rgba(78,222,163,0.15)]"
+              "p-1.5 transition-all",
+              isActive && "bg-primary/10 border border-primary/30 glow-primary"
             )}>
-              <Icon className="w-6 h-6" />
+              <Icon className="w-5 h-5" />
             </div>
-            <span className="font-mono text-[10px] font-bold uppercase tracking-widest">
+            <span className="text-[9px] font-bold uppercase tracking-widest leading-none">
               {item.label}
             </span>
           </button>
