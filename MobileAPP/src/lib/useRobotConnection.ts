@@ -13,6 +13,22 @@ export interface RobotEvent {
   message: string;
 }
 
+export interface MotionLogEntry {
+  millis: number;
+  targetL: number;
+  targetR: number;
+  currL: number;
+  currR: number;
+  rpmL: number;
+  rpmR: number;
+  yawRate: number;
+  bias: number;
+  x: number;
+  y: number;
+  heading: number;
+  raw: string;
+}
+
 function pushHistory(arr: { val: number }[], val: number): { val: number }[] {
   return [...arr.slice(-(MAX_HISTORY - 1)), { val }];
 }
@@ -47,6 +63,8 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
 
   const [lastError, setLastError] = useState('');
   const [maxSpeedAck, setMaxSpeedAck] = useState<number | null>(null);
+  const [motionLoggingEnabled, setMotionLoggingEnabled] = useState(false);
+  const [motionLog, setMotionLog] = useState<MotionLogEntry[]>([]);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
   const [autopilotPhase, setAutopilotPhase] = useState('OFF');
   const [autopilotCmdLeft, setAutopilotCmdLeft] = useState(0);
@@ -76,6 +94,10 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
         message,
       }),
     );
+  }, []);
+
+  const clearMotionLog = useCallback(() => {
+    setMotionLog([]);
   }, []);
 
   const disconnect = useCallback(() => {
@@ -315,6 +337,32 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
           } else if (line.startsWith('AUTO_EVT:')) {
             setAutopilotLastEvent(line.slice('AUTO_EVT:'.length));
             addEvent('info', 'AUTO', line.slice('AUTO_EVT:'.length));
+          } else if (line.startsWith('LOG:')) {
+            const parts = line.slice(4).split(':');
+            if (parts.length === 12) {
+              const entry: MotionLogEntry = {
+                millis: parseInt(parts[0], 10) || 0,
+                targetL: parseInt(parts[1], 10) || 0,
+                targetR: parseInt(parts[2], 10) || 0,
+                currL: parseInt(parts[3], 10) || 0,
+                currR: parseInt(parts[4], 10) || 0,
+                rpmL: parseInt(parts[5], 10) || 0,
+                rpmR: parseInt(parts[6], 10) || 0,
+                yawRate: parseInt(parts[7], 10) || 0,
+                bias: parseInt(parts[8], 10) || 0,
+                x: parseFloat(parts[9]) || 0,
+                y: parseFloat(parts[10]) || 0,
+                heading: parseFloat(parts[11]) || 0,
+                raw: line,
+              };
+              setMotionLog((prev) => [...prev.slice(-1499), entry]);
+            }
+          } else if (line === 'ACK:LOG_ON') {
+            setMotionLoggingEnabled(true);
+            addEvent('info', 'MEGA', 'Motion telemetry logging enabled');
+          } else if (line === 'ACK:LOG_OFF') {
+            setMotionLoggingEnabled(false);
+            addEvent('info', 'MEGA', 'Motion telemetry logging disabled');
           } else if (line.startsWith('DIAG_ESP:') || line.startsWith('DIAG_RESULT:')) {
             setLastDiagLine(line);
           } else if (line.startsWith('{')) {
@@ -404,6 +452,9 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
     messageCount,
     connectionStartedAt,
     eventLog,
+    motionLoggingEnabled,
+    motionLog,
+    clearMotionLog,
     sendCommand,
     claimLeader,
     connect,

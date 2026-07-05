@@ -244,6 +244,13 @@ function connectToEsp32() {
 function connectToMegaSerial() {
   log('Attempting to connect to Arduino Mega on COM11...');
   try {
+    if (megaPort) {
+      try {
+        megaPort.removeAllListeners();
+      } catch (_e) {}
+      megaPort = null;
+    }
+
     megaPort = new SerialPort({
       path: 'COM11',
       baudRate: 115200,
@@ -253,6 +260,7 @@ function connectToMegaSerial() {
     megaPort.open((err) => {
       if (err) {
         log(`Failed to open Mega serial port COM11: ${err.message}`);
+        megaPort = null; // Prevent resource leakage
         setTimeout(connectToMegaSerial, 5000);
         return;
       }

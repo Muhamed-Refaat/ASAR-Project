@@ -331,7 +331,17 @@ void loop() {
     ipLoggedAfterConnect = true;
   }
   readMegaUart();
-  if (isRunning() && lastMegaRxMs > 0 && millis() - lastMegaRxMs > MEGA_SILENCE_TIMEOUT_MS) setState(EspState::IDLE);
+  if (isRunning() && lastMegaRxMs > 0 && millis() - lastMegaRxMs > MEGA_SILENCE_TIMEOUT_MS) {
+    setState(EspState::IDLE);
+    firstStartMs = 0; // Reset first start timer so we retry from scratch!
+  }
+  
+  if (isRunning() && lastMegaRxMs == 0 && rxLines == 0 && firstStartMs > 0 && millis() - firstStartMs > 30000) {
+    // Handshake recovery: we assumed ready blindly but after 30s we still have received zero serial bytes.
+    // Drop back to IDLE to retry sending START handshake to the Mega AVR core.
+    setState(EspState::IDLE);
+    firstStartMs = 0;
+  }
   
   if (espState == EspState::IDLE && millis() - lastStartMs >= START_RETRY_INTERVAL_MS) {
     if (firstStartMs == 0) firstStartMs = millis();

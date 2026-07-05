@@ -191,6 +191,10 @@ export default function App() {
               eventLog={robot.eventLog}
               messageCount={robot.messageCount}
               connectionStartedAt={robot.connectionStartedAt}
+              motionLoggingEnabled={robot.motionLoggingEnabled}
+              motionLog={robot.motionLog}
+              clearMotionLog={robot.clearMotionLog}
+              sendCommand={robot.sendCommand}
             />
           </>
         )}

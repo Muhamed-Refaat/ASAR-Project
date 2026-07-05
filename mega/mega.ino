@@ -103,7 +103,7 @@ constexpr uint8_t ENC_LEFT_B = 19;
 constexpr uint8_t ENC_RIGHT_A = 2;
 constexpr uint8_t ENC_RIGHT_B = 3;
 
-constexpr uint16_t ULTRASONIC_TIMEOUT_US = 12000;
+constexpr uint16_t ULTRASONIC_TIMEOUT_US = 7000;
 constexpr unsigned long ULTRASONIC_SAMPLE_INTERVAL_MS = 40;
 constexpr unsigned long RPM_REPORT_INTERVAL_MS = 500;
 constexpr unsigned long DIST_REPORT_INTERVAL_MS = 200;
@@ -149,6 +149,9 @@ void updateOdometry() {
 
   long dL = currentLeft - lastLeftOdoTicks;
   long dR = currentRight - lastRightOdoTicks;
+  
+  if (dL == 0 && dR == 0) return; // HUGE performance optimization! Skip trig math if stationary
+
   lastLeftOdoTicks = currentLeft;
   lastRightOdoTicks = currentRight;
 
@@ -204,6 +207,7 @@ bool rxUsbOverflow = false;
 uint32_t rxFrameCount = 0;
 
 unsigned long lastUltrasonicAt = 0;
+unsigned long lastRxMs = 0;
 unsigned long lastRpmAt = 0;
 unsigned long lastDistReportAt = 0;
 unsigned long lastMpuReportAt = 0;
@@ -249,8 +253,14 @@ bool alignRoutineActive = false;
 bool straightLockActive = false;
 int16_t straightLockSpeed = 0;
 float straightLockBias = 0.0f;
+bool rotationLockActive = false;
+int16_t rotationLockSpeed = 0;
 unsigned long lastStabilityAt = 0;
 constexpr unsigned long STABILITY_LOOP_MS = 30; // Faster stability loop
+
+bool motionLoggingEnabled = false;
+unsigned long lastMotionLogAt = 0;
+constexpr unsigned long MOTION_LOG_INTERVAL_MS = 100;
 
 AutoPhase autoPhase = AutoPhase::OFF;
 int8_t autoTurnDir = 1;
@@ -386,7 +396,7 @@ void setDrive(int16_t leftSpeed, int16_t rightSpeed) {
   const int16_t cap = static_cast<int16_t>(maxSpeed);
   leftMotor.target = constrain(leftSpeed, -cap, cap);
   rightMotor.target = constrain(rightSpeed, -cap, cap);
-  
+
   // Straight lock detection
   if (leftSpeed != 0 && leftSpeed == rightSpeed) {
     if (!straightLockActive) {
@@ -396,20 +406,37 @@ void setDrive(int16_t leftSpeed, int16_t rightSpeed) {
       headingPid.integral = 0;
       headingPid.lastError = 0;
     }
-  } else if (abs(leftSpeed - rightSpeed) > 15) {
+    rotationLockActive = false;
+  } 
+  // Rotation lock detection (in-place pivoting)
+  else if (leftSpeed != 0 && leftSpeed == -rightSpeed) {
+    if (!rotationLockActive) {
+      rotationLockActive = true;
+      rotationLockSpeed = leftSpeed;
+      headingPid.integral = 0;
+      headingPid.lastError = 0;
+    }
     straightLockActive = false;
+  } 
+  else {
+    straightLockActive = false;
+    rotationLockActive = false;
   }
 }
 
 void stopDrive() {
   leftMotor.target = 0;
   rightMotor.target = 0;
-  straightLockActive = false;
+  // Let straightLockActive and rotationLockActive remain true during ramping deceleration
   hasGoal = false;
 }
 
 bool initMpu() {
   Wire.begin();
+  Wire.setClock(400000); // Fast Mode (400kHz) for low register reading latency
+#if defined(ARDUINO_ARCH_AVR)
+  Wire.setWireTimeout(3000, true); // Prevent permanent hangs under motor EMI noise
+#endif
 
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(MPU_REG_PWR_MGMT_1);
@@ -698,17 +725,17 @@ void updateObstacleWarning() {
 
 // --- Non-blocking buzzer ---
 constexpr uint16_t HORN_DURATION_MS = 300;
-static unsigned long hornOffAt = 0;
+static unsigned long hornStartedAt = 0;
 static bool hornActive = false;
 
 void activateHorn() {
   digitalWrite(BUZZER_PIN, HIGH);
   hornActive = true;
-  hornOffAt = millis() + HORN_DURATION_MS;
+  hornStartedAt = millis();
 }
 
 void tickBuzzer() {
-  if (hornActive && millis() >= hornOffAt) {
+  if (hornActive && millis() - hornStartedAt >= HORN_DURATION_MS) {
     digitalWrite(BUZZER_PIN, LOW);
     hornActive = false;
   }
@@ -816,7 +843,14 @@ void enableAutopilot() {
 }
 
 void updateStability() {
-  if (!isRunning() || !straightLockActive) {
+  if (!isRunning()) {
+    straightLockActive = false;
+    rotationLockActive = false;
+    straightLockBias = 0.0f;
+    return;
+  }
+
+  if (!straightLockActive && !rotationLockActive) {
     straightLockBias = 0.0f;
     headingPid.integral = 0;
     headingPid.lastError = 0;
@@ -834,39 +868,93 @@ void updateStability() {
   lastStabilityAt = now;
 
   float error = 0.0f;
-  if (mpuPresent && readMpuRaw()) {
-    // Gyro Z is yaw rate. scale 131 LSB/(deg/s) for ±250deg/s range
-    error = static_cast<float>(mpuRawGz) / 131.0f;
-    if (abs(error) < 2.5f) error = 0.0f; // High deadzone for air-testing
-  } else {
-    // Fallback to encoder-based stability using high-frequency baseline
+
+  if (straightLockActive) {
+    int16_t targetBase = straightLockSpeed;
+    if (leftMotor.target == 0 && rightMotor.target == 0) {
+      float currentAvg = (leftMotor.current + rightMotor.current) / 2.0f;
+      if (abs(currentAvg) < MIN_PWM) {
+        straightLockActive = false;
+        straightLockBias = 0.0f;
+        leftMotor.target = 0;
+        rightMotor.target = 0;
+        return;
+      }
+      targetBase = static_cast<int16_t>(currentAvg);
+    }
+
+    if (mpuPresent && readMpuRaw()) {
+      error = static_cast<float>(mpuRawGz) / 131.0f;
+      if (abs(error) < 2.5f) error = 0.0f;
+    } else {
+      noInterrupts();
+      long currentL = leftTicks;
+      long currentR = rightTicks;
+      interrupts();
+
+      long dL = currentL - lastStabLeftTicks;
+      long dR = currentR - lastStabRightTicks;
+      lastStabLeftTicks = currentL;
+      lastStabRightTicks = currentR;
+
+      error = static_cast<float>(dL - dR) * 0.5f;
+      if (abs(error) < 4.0f) error = 0.0f;
+    }
+
+    headingPid.integral += error;
+    headingPid.integral = constrain(headingPid.integral, -15.0f, 15.0f);
+    float derivative = error - headingPid.lastError;
+    headingPid.lastError = error;
+
+    float correction = (headingPid.Kp * error) + (headingPid.Ki * headingPid.integral) + (headingPid.Kd * derivative);
+    straightLockBias = constrain(correction, -25.0f, 25.0f);
+
+    leftMotor.target = constrain(targetBase - static_cast<int16_t>(straightLockBias), -255, 255);
+    rightMotor.target = constrain(targetBase + static_cast<int16_t>(straightLockBias), -255, 255);
+  } 
+  else if (rotationLockActive) {
+    int16_t targetBase = rotationLockSpeed;
+    if (leftMotor.target == 0 && rightMotor.target == 0) {
+      float currentDiff = (leftMotor.current - rightMotor.current) / 2.0f;
+      if (abs(currentDiff) < MIN_PWM) {
+        rotationLockActive = false;
+        straightLockBias = 0.0f;
+        leftMotor.target = 0;
+        rightMotor.target = 0;
+        return;
+      }
+      targetBase = static_cast<int16_t>(currentDiff);
+    }
+
     noInterrupts();
     long currentL = leftTicks;
     long currentR = rightTicks;
     interrupts();
-    
-    long dL = currentL - lastStabLeftTicks;
-    long dR = currentR - lastStabRightTicks;
+
+    long dL = abs(currentL - lastStabLeftTicks);
+    long dR = abs(currentR - lastStabRightTicks);
     lastStabLeftTicks = currentL;
     lastStabRightTicks = currentR;
-    
-    error = static_cast<float>(dL - dR) * 0.5f; 
-    if (abs(error) < 4.0f) error = 0.0f; // Significant deadzone to prevent air-oscillations
+
+    error = static_cast<float>(dL - dR) * 0.6f;
+    if (abs(error) < 2.0f) error = 0.0f;
+
+    headingPid.integral += error;
+    headingPid.integral = constrain(headingPid.integral, -15.0f, 15.0f);
+    float derivative = error - headingPid.lastError;
+    headingPid.lastError = error;
+
+    float correction = (headingPid.Kp * error) + (headingPid.Ki * headingPid.integral) + (headingPid.Kd * derivative);
+    straightLockBias = constrain(correction, -20.0f, 20.0f);
+
+    if (targetBase >= 0) {
+      leftMotor.target = constrain(targetBase - static_cast<int16_t>(straightLockBias), -255, 255);
+      rightMotor.target = constrain(-targetBase - static_cast<int16_t>(straightLockBias), -255, 255);
+    } else {
+      leftMotor.target = constrain(targetBase + static_cast<int16_t>(straightLockBias), -255, 255);
+      rightMotor.target = constrain(-targetBase + static_cast<int16_t>(straightLockBias), -255, 255);
+    }
   }
-
-  headingPid.integral += error;
-  headingPid.integral = constrain(headingPid.integral, -15.0f, 15.0f);
-  float derivative = error - headingPid.lastError;
-  headingPid.lastError = error;
-
-  float correction = (headingPid.Kp * error) + (headingPid.Ki * headingPid.integral) + (headingPid.Kd * derivative);
-  straightLockBias = constrain(correction, -25.0f, 25.0f); // Low max bias for safety
-  
-  // Directly adjust motor targets for the stability loop
-  int16_t l = constrain(straightLockSpeed - static_cast<int16_t>(straightLockBias), -255, 255);
-  int16_t r = constrain(straightLockSpeed + static_cast<int16_t>(straightLockBias), -255, 255);
-  leftMotor.target = l;
-  rightMotor.target = r;
 }
 
 
@@ -995,6 +1083,16 @@ void runAutopilot() {
   }
 
   if (autoPhase == AutoPhase::AVOID_REVERSE) {
+    const uint16_t rear = (distancesCm[3] == 0) ? 250 : distancesCm[3];
+    if (rear > 0 && rear < 15) {
+      // Obstacle behind detected! Terminate reversing phase immediately to avoid collision.
+      sendAutoEvent("REAR_BLOCKED_STOP");
+      autoTurnDir = (left >= right) ? 1 : -1;
+      setAutoPhase(AutoPhase::AVOID_TURN);
+      sendAutoEvent(autoTurnDir > 0 ? "AVOID_TURN_LEFT" : "AVOID_TURN_RIGHT");
+      return;
+    }
+
     if (now - autoPhaseStartedAt < autoCfg.reverseMs) {
       leftMotor.target = -autoCfg.reverseSpeed;
       rightMotor.target = -autoCfg.reverseSpeed;
@@ -1126,10 +1224,13 @@ void startSession() {
 
   lastLeftTicks = 0;
   lastRightTicks = 0;
+  lastLeftOdoTicks = 0;
+  lastRightOdoTicks = 0;
   lastLeftRpm = 0.0f;
   lastRightRpm = 0.0f;
 
   const unsigned long now = millis();
+  lastRxMs = now; // Initialize master-loss watchdog timer
   lastUltrasonicAt = now;
   lastRpmAt = now;
   lastDistReportAt = now;
@@ -1267,6 +1368,7 @@ void runDiagnostics() {
 }
 
 void handleCommand(const String& line) {
+  lastRxMs = millis(); // Refresh master-loss watchdog timer on every command
   Serial.print("[MEGA][RX2][CMD] ");
   Serial.println(line);
 
@@ -1676,20 +1778,22 @@ void handleCommand(const String& line) {
     rr = constrain(rr, -cap, cap);
     // Apply directly (bypass ramping — individual wheel control is explicit)
     auto applyOne = [](uint8_t in1, uint8_t in2, uint8_t in3, uint8_t in4, uint8_t ena, uint8_t enb,
-                       int16_t front, int16_t rear) {
+                       int16_t front, int16_t rear, bool invertFront, bool invertRear) {
       const int16_t cf = constrain(front, -255, 255);
-      const bool fFwd = cf >= 0;
+      bool fFwd = cf >= 0;
+      if (invertFront) fFwd = !fFwd;
       digitalWrite(in1, fFwd ? HIGH : LOW);
       digitalWrite(in2, fFwd ? LOW  : HIGH);
       analogWrite(ena, static_cast<uint8_t>(abs(cf)));
       const int16_t cr = constrain(rear, -255, 255);
-      const bool rFwd = cr >= 0;
+      bool rFwd = cr >= 0;
+      if (invertRear) rFwd = !rFwd;
       digitalWrite(in3, rFwd ? HIGH : LOW);
       digitalWrite(in4, rFwd ? LOW  : HIGH);
       analogWrite(enb, static_cast<uint8_t>(abs(cr)));
     };
-    applyOne(L_IN1, L_IN2, L_IN3, L_IN4, L_ENA, L_ENB, fl, rl);
-    applyOne(R_IN1, R_IN2, R_IN3, R_IN4, R_ENA, R_ENB, fr, rr);
+    applyOne(L_IN1, L_IN2, L_IN3, L_IN4, L_ENA, L_ENB, fl, rl, invertFl, invertRl);
+    applyOne(R_IN1, R_IN2, R_IN3, R_IN4, R_ENA, R_ENB, fr, rr, invertFr, invertRr);
     // Keep MotorState in sync so ramping loop does not override us immediately
     leftMotor.current  = static_cast<float>((fl + rl) / 2);
     leftMotor.target   = leftMotor.current;
@@ -1700,6 +1804,20 @@ void handleCommand(const String& line) {
     Serial2.print(rl); Serial2.print(':'); Serial2.print(fr); Serial2.print(':'); Serial2.println(rr);
     Serial.print("[MEGA][ACK] WSPD:"); Serial.print(fl); Serial.print(':');
     Serial.print(rl); Serial.print(':'); Serial.print(fr); Serial.print(':'); Serial.println(rr);
+    return;
+  }
+
+  if (line == "LOG_ON") {
+    motionLoggingEnabled = true;
+    Serial2.println("ACK:LOG_ON");
+    Serial.println("[MEGA][ACK] LOG_ON");
+    return;
+  }
+
+  if (line == "LOG_OFF") {
+    motionLoggingEnabled = false;
+    Serial2.println("ACK:LOG_OFF");
+    Serial.println("[MEGA][ACK] LOG_OFF");
     return;
   }
 
@@ -1839,20 +1957,45 @@ void loop() {
   updateOdometry();
 
   if (isRunning()) {
-    updateUltrasonic();
-    if (alignRoutineActive) {
-      runAlignRoutine();
+    // Master-loss watchdog safety trigger
+    if (millis() - lastRxMs > 5000) {
+      Serial2.println("ERR:WATCHDOG_TIMEOUT");
+      Serial.println("[MEGA][ERR] WATCHDOG_TIMEOUT - Connection lost!");
+      stopSession();
     } else {
-      runAutopilot();
-      updateStability();
+      updateUltrasonic();
+      if (alignRoutineActive) {
+        runAlignRoutine();
+      } else {
+        runAutopilot();
+        updateStability();
+      }
+      applyRamping(); // Apply motor ramps every loop
+      updateRpm();
+      updateJitter(); // Diagnostic: Check for jitter in movement
+      maybeReportDistances();
+      updateMpu();
+      reportAutopilotStatus();
+      updateObstacleWarning();
+
+      // Motion log telemetry streaming at 10Hz
+      if (motionLoggingEnabled && millis() - lastMotionLogAt >= MOTION_LOG_INTERVAL_MS) {
+        lastMotionLogAt = millis();
+        Serial2.print("LOG:");
+        Serial2.print(millis()); Serial2.print(':');
+        Serial2.print(leftMotor.target); Serial2.print(':');
+        Serial2.print(rightMotor.target); Serial2.print(':');
+        Serial2.print(static_cast<int>(leftMotor.current)); Serial2.print(':');
+        Serial2.print(static_cast<int>(rightMotor.current)); Serial2.print(':');
+        Serial2.print(static_cast<int>(lastLeftRpm)); Serial2.print(':');
+        Serial2.print(static_cast<int>(lastRightRpm)); Serial2.print(':');
+        Serial2.print(mpuPresent ? mpuRawGz : 0); Serial2.print(':');
+        Serial2.print(static_cast<int>(straightLockBias)); Serial2.print(':');
+        Serial2.print(posX, 1); Serial2.print(':');
+        Serial2.print(posY, 1); Serial2.print(':');
+        Serial2.println(posTheta * 57.29578f, 1);
+      }
     }
-    applyRamping(); // Apply motor ramps every loop
-    updateRpm();
-    updateJitter(); // Diagnostic: Check for jitter in movement
-    maybeReportDistances();
-    updateMpu();
-    reportAutopilotStatus();
-    updateObstacleWarning();
   } else {
     disableAutopilot("IDLE");
     alignRoutineActive = false;

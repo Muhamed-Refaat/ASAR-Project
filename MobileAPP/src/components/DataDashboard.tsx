@@ -1,6 +1,6 @@
-import { Activity, AlertTriangle, Radio, ShieldAlert, ShieldCheck, Timer } from 'lucide-react';
+import { Activity, AlertTriangle, Radio, ShieldAlert, ShieldCheck, Timer, Terminal, Download, Trash2, Play, Square } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { RobotEvent } from '../lib/useRobotConnection';
+import type { RobotEvent, MotionLogEntry } from '../lib/useRobotConnection';
 
 interface DataDashboardProps {
   connected: boolean;
@@ -21,6 +21,10 @@ interface DataDashboardProps {
   eventLog: RobotEvent[];
   messageCount: number;
   connectionStartedAt: number | null;
+  motionLoggingEnabled: boolean;
+  motionLog: MotionLogEntry[];
+  clearMotionLog: () => void;
+  sendCommand: (cmd: string) => void;
 }
 
 function formatSessionDuration(startAt: number | null): string {
@@ -82,6 +86,10 @@ export default function DataDashboard({
   eventLog,
   messageCount,
   connectionStartedAt,
+  motionLoggingEnabled,
+  motionLog,
+  clearMotionLog,
+  sendCommand,
 }: DataDashboardProps) {
   const mergedTrend = toCombinedSeries(rpmLeftHistory, rpmRightHistory, minDistanceHistory, autopilotRiskHistory);
   const clearanceNow = currentClearance([distLeft, distFront, distRight, distBack]);
@@ -225,6 +233,94 @@ export default function DataDashboard({
               <p className="mt-1 font-sans text-xs text-on-surface">{event.message}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Retro Telemetry Console and Motion Log Export Panel */}
+      <div className="rounded-none glass-panel p-4 border border-green-500/20 bg-black/40 cyber-corners-tertiary select-none" id="motion-telemetry-console">
+        <div className="flex items-center justify-between border-b border-green-500/20 pb-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-green-500 animate-pulse" />
+            <h3 className="font-mono text-[10px] font-black uppercase tracking-widest text-green-500 glow-text-green">MOTION_TRACK_CONSOLE</h3>
+          </div>
+          <span className="font-mono text-[8px] text-green-600 uppercase">SYS_LOG: {motionLog.length} frames</span>
+        </div>
+
+        <p className="text-[9px] font-mono text-green-600 mb-3 leading-relaxed uppercase">
+          CAPTURE HIGH-RESOLUTION DIFFERENTIAL VECTORS, RAMP ACCELERATIONS, PID YAW CORRECTIONS, AND ODOMETRY TO EXPORT LOGS FOR COOPERATIVE LLM DIAGNOSTICS.
+        </p>
+
+        {/* Live Terminal Pre Box */}
+        <div className="relative mb-3">
+          <pre className="p-3 bg-black/60 border border-green-500/25 text-[9px] text-green-400 font-mono overflow-y-auto max-h-48 selection:bg-green-500/25 leading-relaxed rounded-none select-text custom-scrollbar scrollbar-green">
+            {motionLog.slice(-30).map((log, i) => (
+              <div key={i} className="font-mono">
+                {`[${log.millis}ms] T:${log.targetL},${log.targetR} | C:${log.currL},${log.currR} | RPM:${log.rpmL},${log.rpmR} | GZ:${log.yawRate} | B:${log.bias} | P:${Math.round(log.x)},${Math.round(log.y)} | H:${Math.round(log.heading)}°`}
+              </div>
+            ))}
+            {motionLog.length === 0 && (
+              <div className="text-green-700 animate-pulse">// TELEMETRY_STREAM_IDLE. ACTIVATE CAPTURE FOR DATA ANALYSIS.</div>
+            )}
+          </pre>
+          <div className="absolute top-1.5 right-2 text-[6px] text-green-500/40 uppercase font-black tracking-widest">LIVE_MONITOR</div>
+        </div>
+
+        {/* Action Controls Grid */}
+        <div className="grid grid-cols-3 gap-2 font-mono">
+          <button
+            onClick={() => sendCommand(motionLoggingEnabled ? 'LOG_OFF' : 'LOG_ON')}
+            disabled={!robotReady}
+            className={`flex items-center justify-center gap-1.5 py-2 border font-bold text-[9px] uppercase tracking-wider transition-all duration-150 active:scale-[0.98] ${
+              !robotReady 
+                ? 'opacity-40 cursor-not-allowed border-green-950 text-green-900 bg-transparent' 
+                : motionLoggingEnabled
+                  ? 'bg-red-500/20 border-red-500/60 text-red-400 hover:bg-red-500/30'
+                  : 'bg-green-500/10 border-green-500/40 text-green-400 hover:bg-green-500/20 glow-green'
+            }`}
+          >
+            {motionLoggingEnabled ? (
+              <>
+                <Square className="w-3 h-3 text-red-400" /> Stop Stream
+              </>
+            ) : (
+              <>
+                <Play className="w-3 h-3 text-green-400" /> Start Capture
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              if (motionLog.length === 0) return;
+              const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+                JSON.stringify(motionLog, null, 2)
+              )}`;
+              const downloadAnchor = document.createElement('a');
+              downloadAnchor.setAttribute('href', jsonString);
+              downloadAnchor.setAttribute('download', `ASAR_motion_log_${Date.now()}.json`);
+              document.body.appendChild(downloadAnchor);
+              downloadAnchor.click();
+              downloadAnchor.remove();
+            }}
+            disabled={motionLog.length === 0}
+            className={`flex items-center justify-center gap-1.5 py-2 border font-bold text-[9px] uppercase tracking-wider transition-all duration-150 active:scale-[0.98] ${
+              motionLog.length === 0
+                ? 'opacity-40 cursor-not-allowed border-green-950 text-green-900 bg-transparent'
+                : 'bg-green-500/10 border-green-500/40 text-green-400 hover:bg-green-500/20 glow-green'
+            }`}
+          >
+            <Download className="w-3.5 h-3.5" /> Export Log
+          </button>
+
+          <button
+            onClick={clearMotionLog}
+            disabled={motionLog.length === 0}
+            className={`flex items-center justify-center gap-1.5 py-2 border border-green-500/40 bg-transparent font-bold text-[9px] uppercase tracking-wider text-green-500 transition-all duration-150 active:scale-[0.98] hover:bg-green-500/10 ${
+              motionLog.length === 0 ? 'opacity-40 cursor-not-allowed border-green-950 text-green-900' : ''
+            }`}
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Wipe Buffer
+          </button>
         </div>
       </div>
     </section>
