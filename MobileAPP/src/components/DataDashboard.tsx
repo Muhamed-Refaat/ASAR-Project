@@ -1,5 +1,6 @@
 import { Activity, AlertTriangle, Radio, ShieldAlert, ShieldCheck, Timer, Terminal, Download, Trash2, Play, Square } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { cn } from '@/src/lib/utils';
 import type { RobotEvent, MotionLogEntry } from '../lib/useRobotConnection';
 
 interface DataDashboardProps {
@@ -62,9 +63,9 @@ function toCombinedSeries(
 }
 
 function levelClass(level: RobotEvent['level']): string {
-  if (level === 'error') return 'border-error/50 bg-error/10 text-error';
-  if (level === 'warn') return 'border-yellow-400/40 bg-yellow-400/10 text-yellow-300';
-  return 'border-secondary/30 bg-secondary/10 text-secondary';
+  if (level === 'error') return 'border-error/40 bg-error/15 text-error glow-text-error';
+  if (level === 'warn') return 'border-warning/40 bg-warning/15 text-warning glow-text-warning';
+  return 'border-secondary/40 bg-secondary/15 text-secondary glow-text-secondary';
 }
 
 export default function DataDashboard({
@@ -100,169 +101,193 @@ export default function DataDashboard({
   const warningCount = eventLog.filter((entry) => entry.level !== 'info').length;
 
   const distanceBars = [
-    { axis: 'L', value: distLeft },
-    { axis: 'F', value: distFront },
-    { axis: 'R', value: distRight },
-    { axis: 'B', value: distBack },
+    { axis: 'L_US', value: distLeft },
+    { axis: 'F_US', value: distFront },
+    { axis: 'R_US', value: distRight },
+    { axis: 'B_US', value: distBack },
   ];
 
   return (
-    <section className="mx-4 mt-4 space-y-4" id="data-dashboard">
+    <section className="mx-4 mt-4 space-y-4 font-mono select-none crt-flicker" id="data-dashboard">
+      
+      {/* Primary KPI Matrix */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl glass-panel p-3 border border-secondary/25">
+        <div className="rounded-none glass-panel p-3 border border-secondary/20 cyber-corners-secondary bg-surface-container/60">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">Session</span>
-            <Timer className="w-4 h-4 text-secondary" />
+            <span className="font-mono text-[9px] font-black uppercase tracking-widest text-secondary glow-text-secondary">[ SYS_UPTIME ]</span>
+            <Timer className="w-3.5 h-3.5 text-secondary" />
           </div>
-          <p className="mt-2 font-mono text-lg font-bold text-on-surface">{formatSessionDuration(connectionStartedAt)}</p>
-          <p className="font-mono text-[10px] text-on-surface-variant">{messageCount} msgs parsed</p>
+          <p className="mt-2.5 font-mono text-xl font-bold text-on-surface">{formatSessionDuration(connectionStartedAt)}</p>
+          <p className="mt-0.5 font-mono text-[8px] text-on-surface-variant uppercase tracking-wider">RX: {messageCount} PACKETS</p>
         </div>
 
-        <div className="rounded-2xl glass-panel p-3 border border-primary/25">
+        <div className={cn("rounded-none glass-panel p-3 border cyber-corners bg-surface-container/60", clearanceNow > 0 && clearanceNow < 30 ? "border-error/30 cyber-corners-error" : "border-primary/20")}>
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">Current Clearance</span>
+            <span className={cn("font-mono text-[9px] font-black uppercase tracking-widest", clearanceNow > 0 && clearanceNow < 30 ? "text-error glow-text-error" : "text-primary glow-text-primary")}>[ MIN_PROXIMITY ]</span>
             {clearanceNow > 0 && clearanceNow < 30 ? (
-              <ShieldAlert className="w-4 h-4 text-error" />
+              <ShieldAlert className="w-3.5 h-3.5 text-error animate-pulse" />
             ) : (
-              <ShieldCheck className="w-4 h-4 text-secondary" />
+              <ShieldCheck className="w-3.5 h-3.5 text-primary" />
             )}
           </div>
-          <p className="mt-2 font-mono text-lg font-bold text-on-surface">{clearanceNow > 0 ? `${clearanceNow.toFixed(0)} cm` : '--'}</p>
-          <p className="font-mono text-[10px] text-on-surface-variant">closest obstacle</p>
+          <p className="mt-2.5 font-mono text-xl font-bold text-on-surface">{clearanceNow > 0 ? `${clearanceNow.toFixed(0)} CM` : '--'}</p>
+          <p className="mt-0.5 font-mono text-[8px] text-on-surface-variant uppercase tracking-wider">CRITICAL_RANGE</p>
         </div>
 
-        <div className="rounded-2xl glass-panel p-3 border border-tertiary/25">
+        <div className="rounded-none glass-panel p-3 border border-tertiary/20 cyber-corners-tertiary bg-surface-container/60">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">RPM Balance</span>
-            <Activity className="w-4 h-4 text-primary" />
+            <span className="font-mono text-[9px] font-black uppercase tracking-widest text-tertiary glow-text-tertiary">[ RPM_DELTA ]</span>
+            <Activity className="w-3.5 h-3.5 text-tertiary" />
           </div>
-          <p className="mt-2 font-mono text-lg font-bold text-on-surface">{rpmBalance.toFixed(0)}</p>
-          <p className="font-mono text-[10px] text-on-surface-variant">delta |L-R|</p>
+          <p className="mt-2.5 font-mono text-xl font-bold text-on-surface">{rpmBalance.toFixed(0)}</p>
+          <p className="mt-0.5 font-mono text-[8px] text-on-surface-variant uppercase tracking-wider">ABS( L - R ) SHIFT</p>
         </div>
 
-        <div className="rounded-2xl glass-panel p-3 border border-white/15">
+        <div className="rounded-none glass-panel p-3 border border-primary/20 cyber-corners bg-surface-container/60">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">Robot State</span>
-            <Radio className="w-4 h-4 text-primary" />
+            <span className="font-mono text-[9px] font-black uppercase tracking-widest text-primary glow-text-primary">[ KERNEL_STATE ]</span>
+            <Radio className="w-3.5 h-3.5 text-primary" />
           </div>
-          <p className="mt-2 font-mono text-sm font-bold text-on-surface">
-            {connected ? (robotReady ? 'RUNNING' : 'WAITING_RDY') : 'OFFLINE'}
+          <p className="mt-2.5 font-mono text-sm font-bold text-on-surface glow-text-primary truncate">
+            {connected ? (robotReady ? 'OK_RUNNING' : 'AWAIT_SYNC') : 'OFFLINE'}
           </p>
-          <p className="font-mono text-[10px] text-on-surface-variant">
-            {isLeader ? 'leader' : 'observer'} • {autopilotEnabled ? 'auto' : 'manual'}
+          <p className="mt-0.5 font-mono text-[8px] text-on-surface-variant uppercase tracking-wider">
+            {isLeader ? 'LDR' : 'OBS'} // {autopilotEnabled ? 'AUTO' : 'MAN'}
           </p>
         </div>
       </div>
 
-      <div className="rounded-2xl glass-panel p-4" id="data-trend-chart">
-        <div className="flex items-center justify-between">
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Telemetry Trends</h3>
-          <span className="font-mono text-[10px] text-on-surface-variant">avg rpm {avgRpm.toFixed(0)} • risk {autopilotRisk.toFixed(0)}</span>
+      {/* Historical Telemetry Graph */}
+      <div className="rounded-none glass-panel p-4 border border-primary/20 cyber-corners bg-surface-container/60 relative" id="data-trend-chart">
+        <div className="absolute top-0.5 right-1.5 text-[6px] text-primary/30 uppercase font-black">GRAPH_FEED_01</div>
+        <div className="flex items-center justify-between border-b border-primary/10 pb-2">
+          <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary glow-text-primary">[ TELEMETRY_TRENDS ]</h3>
+          <span className="font-mono text-[8px] text-on-surface-variant uppercase tracking-wider">µ_RPM:{avgRpm.toFixed(0)} | RISK:{autopilotRisk.toFixed(0)}%</span>
         </div>
-        <div className="h-52 mt-3">
+        <div className="h-52 mt-4">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={mergedTrend}>
-              <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+              <CartesianGrid stroke="rgba(0, 240, 255, 0.05)" vertical={false} strokeDasharray="2 2" />
               <XAxis dataKey="idx" hide />
-              <YAxis yAxisId="rpm" stroke="#adc6ff" tick={{ fontSize: 10 }} width={30} />
-              <YAxis yAxisId="dist" orientation="right" stroke="#4edea3" tick={{ fontSize: 10 }} width={30} />
+              <YAxis yAxisId="rpm" stroke="var(--color-primary)" tick={{ fontSize: 9, fill: 'var(--color-primary)' }} width={25} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="dist" orientation="right" stroke="var(--color-secondary)" tick={{ fontSize: 9, fill: 'var(--color-secondary)' }} width={25} axisLine={false} tickLine={false} />
               <Tooltip
                 contentStyle={{
-                  background: 'rgba(10, 17, 34, 0.95)',
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  borderRadius: '10px',
-                  fontSize: '11px',
+                  background: 'rgba(6, 10, 22, 0.95)',
+                  border: '1px solid var(--color-primary)',
+                  borderRadius: '0px',
+                  fontSize: '10px',
+                  fontFamily: 'monospace',
+                  textTransform: 'uppercase'
                 }}
+                itemStyle={{ color: '#fff' }}
               />
-              <Line yAxisId="rpm" type="monotone" dataKey="left" stroke="#82b5ff" strokeWidth={2} dot={false} />
-              <Line yAxisId="rpm" type="monotone" dataKey="right" stroke="#b2c9ff" strokeWidth={2} dot={false} />
-              <Line yAxisId="dist" type="monotone" dataKey="clearance" stroke="#4edea3" strokeWidth={2} dot={false} />
-              <Line yAxisId="dist" type="monotone" dataKey="risk" stroke="#ffb4ab" strokeWidth={1.5} dot={false} />
+              <Line yAxisId="rpm" type="step" dataKey="left" stroke="var(--color-primary)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+              <Line yAxisId="rpm" type="step" dataKey="right" stroke="#4a80ff" strokeWidth={1.5} strokeDasharray="3 3" dot={false} isAnimationActive={false} />
+              <Line yAxisId="dist" type="monotone" dataKey="clearance" stroke="var(--color-secondary)" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line yAxisId="dist" type="monotone" dataKey="risk" stroke="var(--color-error)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      <div className="rounded-2xl glass-panel p-4" id="distance-bars-chart">
-        <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Sensor Snapshot</h3>
-        <div className="h-28 mt-3">
+      {/* Snapshot Sonar Array */}
+      <div className="rounded-none glass-panel p-4 border border-secondary/20 cyber-corners-secondary bg-surface-container/60 relative" id="distance-bars-chart">
+        <div className="absolute top-0.5 right-1.5 text-[6px] text-secondary/30 uppercase font-black">GRAPH_FEED_02</div>
+        <div className="border-b border-secondary/10 pb-2">
+          <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-secondary glow-text-secondary">[ SONAR_SNAPSHOT ]</h3>
+        </div>
+        <div className="h-28 mt-4">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={distanceBars}>
-              <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-              <XAxis dataKey="axis" stroke="#c2c6d6" tick={{ fontSize: 10 }} />
-              <YAxis stroke="#c2c6d6" tick={{ fontSize: 10 }} width={30} />
+              <CartesianGrid stroke="rgba(57, 255, 20, 0.05)" vertical={false} strokeDasharray="2 2" />
+              <XAxis dataKey="axis" stroke="var(--color-secondary)" tick={{ fontSize: 9, fill: 'var(--color-secondary)' }} axisLine={false} tickLine={false} />
+              <YAxis stroke="var(--color-secondary)" tick={{ fontSize: 9, fill: 'var(--color-secondary)' }} width={25} axisLine={false} tickLine={false} />
               <Tooltip
-                formatter={(value) => `${value} cm`}
+                formatter={(value) => `${value} CM`}
+                cursor={{ fill: 'rgba(57, 255, 20, 0.1)' }}
                 contentStyle={{
-                  background: 'rgba(10, 17, 34, 0.95)',
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  borderRadius: '10px',
-                  fontSize: '11px',
+                  background: 'rgba(6, 10, 22, 0.95)',
+                  border: '1px solid var(--color-secondary)',
+                  borderRadius: '0px',
+                  fontSize: '10px',
+                  fontFamily: 'monospace',
+                  textTransform: 'uppercase'
                 }}
               />
-              <Bar dataKey="value" fill="#4edea3" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="value" fill="var(--color-secondary)" radius={[0, 0, 0, 0]} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      <div className="rounded-2xl glass-panel p-4" id="event-log-list">
-        <div className="flex items-center justify-between">
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Event Log</h3>
-          <span className="flex items-center gap-1 font-mono text-[10px] text-on-surface-variant">
-            <AlertTriangle className="w-3 h-3 text-yellow-300" />
-            {warningCount} alerts
+      {/* System Event Logs */}
+      <div className="rounded-none glass-panel p-4 border border-primary/20 cyber-corners bg-surface-container/60 relative" id="event-log-list">
+        <div className="absolute top-0.5 right-1.5 text-[6px] text-primary/30 uppercase font-black">SYS_LOG_BUFFER</div>
+        <div className="flex items-center justify-between border-b border-primary/10 pb-2">
+          <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-primary glow-text-primary">[ KERNEL_EVENTS ]</h3>
+          <span className="flex items-center gap-1.5 font-mono text-[8px] text-warning glow-text-warning uppercase tracking-wider font-bold">
+            <AlertTriangle className="w-3 h-3 text-warning" />
+            {warningCount} WARN/ERR
           </span>
         </div>
-        <div className="mt-3 space-y-2 max-h-56 overflow-y-auto pr-1">
+        
+        <div className="mt-3 space-y-2 max-h-56 overflow-y-auto pr-2 scrollbar-thin">
           {eventLog.length === 0 && (
-            <p className="font-mono text-[10px] text-on-surface-variant">No events yet. Connect to start recording.</p>
+            <p className="font-mono text-[9px] text-on-surface-variant uppercase tracking-widest animate-pulse mt-2">AWAITING SYS_EVENTS...</p>
           )}
           {[...eventLog].reverse().map((event) => (
             <div
               key={event.id}
-              className="rounded-lg border px-2.5 py-2 bg-surface-container-low/60"
+              className={cn("border-l-2 pl-3 py-1.5 bg-black/20", levelClass(event.level))}
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className={`font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded border ${levelClass(event.level)}`}>
-                  {event.level}
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[8px] uppercase tracking-widest text-on-surface-variant font-bold">
+                    {new Date(event.at).toLocaleTimeString([], { hour12: false, fractionalSecondDigits: 1 })}
+                  </span>
+                  <span className="font-mono text-[8px] uppercase tracking-widest px-1 bg-black/40">
+                    {event.source}
+                  </span>
+                </div>
+                <span className="font-mono text-[8px] uppercase font-black tracking-widest">
+                  [{event.level}]
                 </span>
-                <span className="font-mono text-[10px] text-on-surface-variant">{new Date(event.at).toLocaleTimeString()}</span>
               </div>
-              <p className="mt-1 font-mono text-[10px] text-on-surface-variant">{event.source}</p>
-              <p className="mt-1 font-sans text-xs text-on-surface">{event.message}</p>
+              <p className="font-mono text-[10px] uppercase font-bold tracking-wide">{event.message}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Retro Telemetry Console and Motion Log Export Panel */}
-      <div className="rounded-none glass-panel p-4 border border-green-500/20 bg-black/40 cyber-corners-tertiary select-none" id="motion-telemetry-console">
-        <div className="flex items-center justify-between border-b border-green-500/20 pb-2 mb-3">
+      <div className="rounded-none glass-panel p-4 border border-secondary/30 bg-black/60 cyber-corners-secondary select-none relative" id="motion-telemetry-console">
+        <div className="absolute top-0.5 right-1.5 text-[6px] text-secondary/30 uppercase font-black">MEM_DUMP_0x4F</div>
+        <div className="flex items-center justify-between border-b border-secondary/20 pb-2 mb-3">
           <div className="flex items-center gap-2">
-            <Terminal className="w-4 h-4 text-green-500 animate-pulse" />
-            <h3 className="font-mono text-[10px] font-black uppercase tracking-widest text-green-500 glow-text-green">MOTION_TRACK_CONSOLE</h3>
+            <Terminal className="w-4 h-4 text-secondary animate-pulse" />
+            <h3 className="font-mono text-[10px] font-black uppercase tracking-widest text-secondary glow-text-secondary">[ MOTION_TRACK_CONSOLE ]</h3>
           </div>
-          <span className="font-mono text-[8px] text-green-600 uppercase">SYS_LOG: {motionLog.length} frames</span>
+          <span className="font-mono text-[8px] text-secondary uppercase font-bold">SYS_BUFFER: {motionLog.length} FRAMES</span>
         </div>
 
-        <p className="text-[9px] font-mono text-green-600 mb-3 leading-relaxed uppercase">
-          CAPTURE HIGH-RESOLUTION DIFFERENTIAL VECTORS, RAMP ACCELERATIONS, PID YAW CORRECTIONS, AND ODOMETRY TO EXPORT LOGS FOR COOPERATIVE LLM DIAGNOSTICS.
+        <p className="text-[8px] font-mono text-secondary/80 mb-3 leading-relaxed uppercase tracking-wider">
+          // CAPTURE HIGH-RESOLUTION DIFFERENTIAL VECTORS, RAMP ACCELERATIONS, PID YAW CORRECTIONS, AND ODOMETRY TO EXPORT LOGS FOR COOPERATIVE LLM DIAGNOSTICS.
         </p>
 
         {/* Live Terminal Pre Box */}
-        <div className="relative mb-3">
-          <pre className="p-3 bg-black/60 border border-green-500/25 text-[9px] text-green-400 font-mono overflow-y-auto max-h-48 selection:bg-green-500/25 leading-relaxed rounded-none select-text custom-scrollbar scrollbar-green">
-            {motionLog.slice(-30).map((log, i) => (
-              <div key={i} className="font-mono">
+        <div className="relative mb-4">
+          <pre className="p-3 bg-[#02050a] border border-secondary/20 text-[8px] text-secondary font-mono overflow-y-auto h-48 selection:bg-secondary/25 leading-relaxed rounded-none select-text scrollbar-thin">
+            {motionLog.slice(-40).map((log, i) => (
+              <div key={i} className="font-mono hover:bg-secondary/10">
                 {`[${log.millis}ms] T:${log.targetL},${log.targetR} | C:${log.currL},${log.currR} | RPM:${log.rpmL},${log.rpmR} | GZ:${log.yawRate} | B:${log.bias} | P:${Math.round(log.x)},${Math.round(log.y)} | H:${Math.round(log.heading)}°`}
               </div>
             ))}
             {motionLog.length === 0 && (
-              <div className="text-green-700 animate-pulse">// TELEMETRY_STREAM_IDLE. ACTIVATE CAPTURE FOR DATA ANALYSIS.</div>
+              <div className="text-secondary/50 animate-pulse font-bold mt-1 uppercase tracking-widest">_ // TELEMETRY_STREAM_IDLE. ACTIVATE CAPTURE FOR DATA ANALYSIS.</div>
             )}
           </pre>
-          <div className="absolute top-1.5 right-2 text-[6px] text-green-500/40 uppercase font-black tracking-widest">LIVE_MONITOR</div>
+          <div className="absolute top-1.5 right-2 text-[6px] text-secondary/40 uppercase font-black tracking-widest">LIVE_MONITOR</div>
         </div>
 
         {/* Action Controls Grid */}
@@ -270,21 +295,22 @@ export default function DataDashboard({
           <button
             onClick={() => sendCommand(motionLoggingEnabled ? 'LOG_OFF' : 'LOG_ON')}
             disabled={!robotReady}
-            className={`flex items-center justify-center gap-1.5 py-2 border font-bold text-[9px] uppercase tracking-wider transition-all duration-150 active:scale-[0.98] ${
+            className={cn(
+              "flex items-center justify-center gap-1.5 py-2.5 border font-black text-[9px] uppercase tracking-widest transition-all duration-150 active:scale-[0.98]",
               !robotReady 
-                ? 'opacity-40 cursor-not-allowed border-green-950 text-green-900 bg-transparent' 
+                ? "opacity-40 cursor-not-allowed border-secondary/10 text-secondary/30 bg-transparent" 
                 : motionLoggingEnabled
-                  ? 'bg-red-500/20 border-red-500/60 text-red-400 hover:bg-red-500/30'
-                  : 'bg-green-500/10 border-green-500/40 text-green-400 hover:bg-green-500/20 glow-green'
-            }`}
+                  ? "bg-error/15 border-error/50 text-error glow-text-error hover:bg-error/25"
+                  : "bg-secondary/10 border-secondary/40 text-secondary glow-text-secondary hover:bg-secondary/20 glow-secondary"
+            )}
           >
             {motionLoggingEnabled ? (
               <>
-                <Square className="w-3 h-3 text-red-400" /> Stop Stream
+                <Square className="w-3.5 h-3.5 text-error fill-error/20" /> STOP_STREAM
               </>
             ) : (
               <>
-                <Play className="w-3 h-3 text-green-400" /> Start Capture
+                <Play className="w-3.5 h-3.5 text-secondary fill-secondary/20" /> START_CAP
               </>
             )}
           </button>
@@ -303,23 +329,27 @@ export default function DataDashboard({
               downloadAnchor.remove();
             }}
             disabled={motionLog.length === 0}
-            className={`flex items-center justify-center gap-1.5 py-2 border font-bold text-[9px] uppercase tracking-wider transition-all duration-150 active:scale-[0.98] ${
+            className={cn(
+              "flex items-center justify-center gap-1.5 py-2.5 border font-black text-[9px] uppercase tracking-widest transition-all duration-150 active:scale-[0.98]",
               motionLog.length === 0
-                ? 'opacity-40 cursor-not-allowed border-green-950 text-green-900 bg-transparent'
-                : 'bg-green-500/10 border-green-500/40 text-green-400 hover:bg-green-500/20 glow-green'
-            }`}
+                ? "opacity-40 cursor-not-allowed border-secondary/10 text-secondary/30 bg-transparent"
+                : "bg-primary/10 border-primary/40 text-primary glow-text-primary hover:bg-primary/20 glow-primary"
+            )}
           >
-            <Download className="w-3.5 h-3.5" /> Export Log
+            <Download className="w-3.5 h-3.5" /> DUMP_LOG
           </button>
 
           <button
             onClick={clearMotionLog}
             disabled={motionLog.length === 0}
-            className={`flex items-center justify-center gap-1.5 py-2 border border-green-500/40 bg-transparent font-bold text-[9px] uppercase tracking-wider text-green-500 transition-all duration-150 active:scale-[0.98] hover:bg-green-500/10 ${
-              motionLog.length === 0 ? 'opacity-40 cursor-not-allowed border-green-950 text-green-900' : ''
-            }`}
+            className={cn(
+              "flex items-center justify-center gap-1.5 py-2.5 border font-black text-[9px] uppercase tracking-widest transition-all duration-150 active:scale-[0.98]",
+              motionLog.length === 0 
+                ? "opacity-40 cursor-not-allowed border-secondary/10 text-secondary/30 bg-transparent" 
+                : "border-warning/40 bg-warning/10 text-warning glow-text-warning hover:bg-warning/20"
+            )}
           >
-            <Trash2 className="w-3.5 h-3.5" /> Wipe Buffer
+            <Trash2 className="w-3.5 h-3.5" /> FORMAT_MEM
           </button>
         </div>
       </div>

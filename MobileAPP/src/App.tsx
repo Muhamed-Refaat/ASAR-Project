@@ -63,10 +63,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-surface pb-32 selection:bg-primary/20" id="main-container">
+    <div className="h-dvh flex flex-col bg-surface overflow-hidden selection:bg-primary/20 relative" id="main-container">
       <Header connected={robot.connected} robotReady={robot.robotReady} />
 
-      <main className="max-w-md mx-auto" id="dashboard-main">
+      <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full pb-32 scrollbar-thin" id="dashboard-main">
         {activeTab === 'drive' && (
           <>
             <MasterStatus connected={robot.connected} robotReady={robot.robotReady} lastError={robot.lastError} />
