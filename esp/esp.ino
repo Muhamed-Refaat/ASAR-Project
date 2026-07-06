@@ -8,16 +8,9 @@
 #include <WiFi.h>
 #include <WebSocketsServer.h>
 
-// --- WiFi credentials ---
-static const char WIFI_SSID[] = "Refaat Allam";
-static const char WIFI_PASS[] = "Allam12345e";
-
-// --- Static IP Configuration ---
-IPAddress local_IP(192, 168, 1, 100);
-IPAddress gateway(192, 168, 1, 1);
-IPAddress subnet(255, 255, 255, 0);
-IPAddress primaryDNS(192, 168, 1, 1);
-IPAddress secondaryDNS(8, 8, 8, 8);
+// --- WiFi credentials (DHCP Mode) ---
+static const char WIFI_SSID[] = "WE_B66E60";
+static const char WIFI_PASS[] = "e48a22b3";
 
 // --- ESP32 app socket ---
 constexpr uint16_t APP_WS_PORT = 81;
