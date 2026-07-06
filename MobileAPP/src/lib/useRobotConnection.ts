@@ -44,6 +44,8 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
   const mountedRef = useRef(true);
   const eventSeqRef = useRef(1);
   const obstacleWarnAtRef = useRef(0);
+  const wasConnectedRef = useRef(false);
+  const retryCountRef = useRef(0);
 
   const [connected, setConnected] = useState(false);
   const [robotReady, setRobotReady] = useState(false);
@@ -101,6 +103,8 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
   }, []);
 
   const disconnect = useCallback(() => {
+    wasConnectedRef.current = false;
+    retryCountRef.current = 0;
     if (reconnectRef.current) {
       clearTimeout(reconnectRef.current);
       reconnectRef.current = null;
@@ -163,6 +167,9 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
         if (!mountedRef.current || wsRef.current !== wsDirect) return;
         if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
 
+        wasConnectedRef.current = true;
+        retryCountRef.current = 0;
+
         setConnected(true);
         setConnectionMode('direct');
         setIsConnecting(false);
@@ -214,6 +221,9 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
         wsRelay.onopen = () => {
           if (!mountedRef.current || wsRef.current !== wsRelay) return;
 
+          wasConnectedRef.current = true;
+          retryCountRef.current = 0;
+
           setConnected(true);
           setConnectionMode('relay');
           setIsConnecting(false);
@@ -254,8 +264,19 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
       setConnectionStartedAt(null);
       wsRef.current = null;
 
-      addEvent('error', 'AUTO', '[CONNECT FAILED] Both routes failed. Re-probing in 4s...');
-      reconnectRef.current = setTimeout(() => connect(), 4000);
+      if (wasConnectedRef.current) {
+        if (retryCountRef.current < 5) {
+          retryCountRef.current++;
+          addEvent('warn', 'AUTO', `[DISCONNECTED] Connection lost. Retrying auto-connect (${retryCountRef.current}/5) in 10s...`);
+          reconnectRef.current = setTimeout(() => connect(), 10000);
+        } else {
+          addEvent('error', 'AUTO', '[CONNECT FAILED] Maximum reconnection retries (5/5) reached. Stopped.');
+          wasConnectedRef.current = false;
+          retryCountRef.current = 0;
+        }
+      } else {
+        addEvent('error', 'AUTO', '[CONNECT FAILED] Initial connection failed. Handshake stopped.');
+      }
     }
 
     function setupMessageAndCloseHandlers(ws: WebSocket, mode: 'direct' | 'relay') {
@@ -394,8 +415,20 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
         setConnectionMode('idle');
         wsRef.current = null;
 
-        addEvent('warn', 'WS', `Connection to ${mode === 'direct' ? 'Direct' : 'Relay'} lost. Retrying auto-connect in 3s`);
-        reconnectRef.current = setTimeout(() => connect(), 3000);
+        if (wasConnectedRef.current) {
+          if (retryCountRef.current < 5) {
+            retryCountRef.current++;
+            addEvent('warn', 'WS', `Connection to ${mode === 'direct' ? 'Direct' : 'Relay'} lost. Retrying auto-connect (${retryCountRef.current}/5) in 10s...`);
+            reconnectRef.current = setTimeout(() => connect(), 10000); // 10 second interval
+          } else {
+            addEvent('error', 'WS', 'Maximum reconnection retries (5/5) reached. Stopped.');
+            wasConnectedRef.current = false;
+            retryCountRef.current = 0;
+            setIsConnecting(false);
+          }
+        } else {
+          addEvent('error', 'WS', 'Connection closed.');
+        }
       };
     }
   }, [addEvent, directUrl, relayUrl]);
