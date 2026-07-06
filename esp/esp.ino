@@ -99,6 +99,7 @@ static unsigned long lastStartMs = 0;
 static unsigned long firstStartMs = 0;
 static unsigned long lastMegaRxMs = 0;
 static unsigned long lastWifiRetryMs = 0;
+static unsigned long lastHeartbeatMs = 0;
 
 static uint32_t txLines = 0, rxLines = 0, errLines = 0;
 static int pendingMaxSpeed = -1;
@@ -116,19 +117,20 @@ static void printNetworkIdentity(const char* tag) {
   Serial.println(F("|                                                  |"));
   Serial.println(F("|======= ESP32 DUAL-TOPOLOGY GATEWAY READY ========|"));
   Serial.println(F("|                                                  |"));
-  Serial.print(F("|  [DIRECT MODE] IP:  "));
+  Serial.print(F("|  [DIRECT MODE] URL: ws://"));
   
-  String localIp = WiFi.localIP().toString();
-  int padDirect = 29 - localIp.length();
-  Serial.print(localIp);
+  // Format local IP space to fit neatly inside the ASCII borders
+  String directUrl = String(WiFi.localIP().toString()) + ":" + APP_WS_PORT;
+  int padDirect = 26 - directUrl.length();
+  Serial.print(directUrl);
   for (int i = 0; i < padDirect; i++) Serial.print(' ');
   Serial.println(F(" |"));
   
-  Serial.print(F("|  [RELAY MODE]  URL: ws://"));
-  String directUrl = String(WiFi.localIP().toString()) + ":" + APP_WS_PORT;
-  int padRelay = 22 - directUrl.length();
-  Serial.print(directUrl);
-  for (int i = 0; i < padRelay; i++) Serial.print(' ');
+  Serial.print(F("|  [RELAY MODE]  IP:  "));
+  String localIp = WiFi.localIP().toString();
+  int padLocal = 29 - localIp.length();
+  Serial.print(localIp);
+  for (int i = 0; i < padLocal; i++) Serial.print(' ');
   Serial.println(F(" |"));
   
   Serial.println(F("|__________________________________________________|"));
@@ -367,6 +369,12 @@ void loop() {
     // Drop back to IDLE to retry sending START handshake to the Mega AVR core.
     setState(EspState::IDLE);
     firstStartMs = 0;
+  }
+
+  // Master-slave keep-alive heartbeat ping every 2000ms
+  if (appConnected && isRunning() && millis() - lastHeartbeatMs >= 2000) {
+    lastHeartbeatMs = millis();
+    sendMega("PING");
   }
   
   if (espState == EspState::IDLE && millis() - lastStartMs >= START_RETRY_INTERVAL_MS) {

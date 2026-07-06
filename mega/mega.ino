@@ -1250,6 +1250,12 @@ void startSession() {
 
 void stopSession() {
   stopDrive();
+  // Force current speed immediately to 0 and write to pins for emergency safety!
+  leftMotor.current = 0.0f;
+  rightMotor.current = 0.0f;
+  setLeftMotors(0);
+  setRightMotors(0);
+
   disableAutopilot("SESSION_STOP");
   hornActive = false;
   obstacleWarningActive = false;
@@ -1382,6 +1388,12 @@ void handleCommand(const String& line) {
     } else {
       startSession();
     }
+    return;
+  }
+
+  if (line == "PING") {
+    // Heartbeat ping. Watchdog is already refreshed. Reply to acknowledge.
+    Serial2.println("ACK:PING");
     return;
   }
 
