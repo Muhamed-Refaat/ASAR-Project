@@ -19,7 +19,7 @@ WebSocketsServer appWs(APP_WS_PORT);
 // --- UART2 to Mega ---
 constexpr int UART2_RX_PIN = 16; // Restored to GPIO 16
 constexpr int UART2_TX_PIN = 17;
-constexpr unsigned long UART_BAUD = 9600;
+constexpr unsigned long UART_BAUD = 115200;
 constexpr size_t UART_LINE_MAX = 96;
 
 // --- Protocol tokens (UART to Mega) ---

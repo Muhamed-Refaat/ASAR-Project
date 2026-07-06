@@ -4,7 +4,7 @@
 #include <Wire.h>
 
 // UART2 link to ESP32
-constexpr unsigned long UART_BAUD = 9600;
+constexpr unsigned long UART_BAUD = 115200;
 constexpr unsigned long USB_DEBUG_BAUD = 115200;
 constexpr size_t UART_LINE_MAX = 96;
 
