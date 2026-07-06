@@ -113,14 +113,35 @@ static bool ipLoggedAfterConnect = false;
 
 static void printNetworkIdentity(const char* tag) {
   Serial.println();
-  Serial.println(F("=================================================="));
-  Serial.print(F("[DIRECT MODE] URL: ws://"));
-  Serial.print(WiFi.localIP());
-  Serial.print(':');
-  Serial.println(APP_WS_PORT);
-  Serial.print(F("[RELAY MODE]  IP:  "));
-  Serial.println(WiFi.localIP());
-  Serial.println(F("=================================================="));
+  Serial.println(F(" __________________________________________________ "));
+  Serial.println(F("|                                                  |"));
+  Serial.println(F("|     _    ____     _    ____                      |"));
+  Serial.println(F("|    / \\  / ___|   / \\  |  _ \\                     |"));
+  Serial.println(F("|   / _ \\ \\___ \\  / _ \\ | |_) |                    |"));
+  Serial.println(F("|  / ___ \\ ___) |/ ___ \\|  _ <                     |"));
+  Serial.println(F("| /_/   \\_\\____//_/   \\_\\_| \\_\\                    |"));
+  Serial.println(F("|                                                  |"));
+  Serial.println(F("|======= ESP32 DUAL-TOPOLOGY GATEWAY READY ========|"));
+  Serial.println(F("|                                                  |"));
+  Serial.print(F("|  [DIRECT MODE] URL: ws://"));
+  
+  // Format local IP space to fit neatly inside the ASCII borders
+  String directUrl = String(WiFi.localIP().toString()) + ":" + APP_WS_PORT;
+  int padDirect = 26 - directUrl.length();
+  Serial.print(directUrl);
+  for (int i = 0; i < padDirect; i++) Serial.print(' ');
+  Serial.println(F(" |"));
+  
+  Serial.print(F("|  [RELAY MODE]  IP:  "));
+  String localIp = WiFi.localIP().toString();
+  int padLocal = 29 - localIp.length();
+  Serial.print(localIp);
+  for (int i = 0; i < padLocal; i++) Serial.print(' ');
+  Serial.println(F(" |"));
+  
+  Serial.println(F("|__________________________________________________|"));
+  Serial.println();
+  Serial.println(F("[SYSTEM] WAITING FOR FIRST APP MESSAGE..."));
   Serial.println();
 }
 
@@ -294,6 +315,8 @@ static void handleRobotCommandFromApp(const String& line, uint8_t clientId) {
   sendMega(line);
 }
 
+static bool firstAppMessageReceived = false;
+
 static void onAppWsEvent(uint8_t clientId, WStype_t type, uint8_t* payload, size_t length) {
   if (type == WStype_CONNECTED) {
     appConnected = true;
@@ -302,7 +325,18 @@ static void onAppWsEvent(uint8_t clientId, WStype_t type, uint8_t* payload, size
     String text = "";
     for (size_t i = 0; i < length; ++i) text += static_cast<char>(payload[i]);
     text.trim();
-    if (text.length() > 0) handleRobotCommandFromApp(text, clientId);
+    if (text.length() > 0) {
+      if (!firstAppMessageReceived) {
+        Serial.println();
+        Serial.println(F("=================================================="));
+        Serial.print(F("[SUCCESS] CLIENT HANDSHAKE RECEIVED: "));
+        Serial.println(text);
+        Serial.println(F("=================================================="));
+        Serial.println();
+        firstAppMessageReceived = true;
+      }
+      handleRobotCommandFromApp(text, clientId);
+    }
   }
 }
 
@@ -322,13 +356,13 @@ void setup() {
 
 void loop() {
   appWs.loop();
-  if (WiFi.status() != WL_CONNECTED && millis() - lastWifiRetryMs > WIFI_RETRY_INTERVAL_MS) {
-    lastWifiRetryMs = millis();
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!ipLoggedAfterConnect) {
+      printNetworkIdentity("Connected");
+      ipLoggedAfterConnect = true;
+    }
+  } else {
     ipLoggedAfterConnect = false;
-  } else if (WiFi.status() == WL_CONNECTED && !ipLoggedAfterConnect) {
-    printNetworkIdentity("Connected");
-    ipLoggedAfterConnect = true;
   }
   readMegaUart();
   if (isRunning() && lastMegaRxMs > 0 && millis() - lastMegaRxMs > MEGA_SILENCE_TIMEOUT_MS) {
