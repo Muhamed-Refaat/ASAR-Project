@@ -119,8 +119,8 @@ static void printNetworkIdentity(const char* tag) {
   Serial.println(F("|                                                  |"));
   Serial.print(F("|  [DIRECT MODE] URL: ws://"));
   
-  // Format local IP space to fit neatly inside the ASCII borders
-  String directUrl = String(WiFi.localIP().toString()) + ":" + APP_WS_PORT;
+  // Format local IP space to fit neatly inside the ASCII borders (explicit String cast to prevent character coercion)
+  String directUrl = WiFi.localIP().toString() + ":" + String(APP_WS_PORT);
   int padDirect = 26 - directUrl.length();
   Serial.print(directUrl);
   for (int i = 0; i < padDirect; i++) Serial.print(' ');
