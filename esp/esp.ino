@@ -123,20 +123,19 @@ static void printNetworkIdentity(const char* tag) {
   Serial.println(F("|                                                  |"));
   Serial.println(F("|======= ESP32 DUAL-TOPOLOGY GATEWAY READY ========|"));
   Serial.println(F("|                                                  |"));
-  Serial.print(F("|  [DIRECT MODE] URL: ws://"));
+  Serial.print(F("|  [DIRECT MODE] IP:  "));
   
-  // Format local IP space to fit neatly inside the ASCII borders
-  String directUrl = String(WiFi.localIP().toString()) + ":" + APP_WS_PORT;
-  int padDirect = 26 - directUrl.length();
-  Serial.print(directUrl);
+  String localIp = WiFi.localIP().toString();
+  int padDirect = 29 - localIp.length();
+  Serial.print(localIp);
   for (int i = 0; i < padDirect; i++) Serial.print(' ');
   Serial.println(F(" |"));
   
-  Serial.print(F("|  [RELAY MODE]  IP:  "));
-  String localIp = WiFi.localIP().toString();
-  int padLocal = 29 - localIp.length();
-  Serial.print(localIp);
-  for (int i = 0; i < padLocal; i++) Serial.print(' ');
+  Serial.print(F("|  [RELAY MODE]  URL: ws://"));
+  String directUrl = String(WiFi.localIP().toString()) + ":" + APP_WS_PORT;
+  int padRelay = 22 - directUrl.length();
+  Serial.print(directUrl);
+  for (int i = 0; i < padRelay; i++) Serial.print(' ');
   Serial.println(F(" |"));
   
   Serial.println(F("|__________________________________________________|"));

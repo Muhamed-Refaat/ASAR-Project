@@ -414,12 +414,11 @@ export function useRobotConnection(directUrl: string, relayUrl: string) {
 
   useEffect(() => {
     mountedRef.current = true;
-    connect();
     return () => {
       mountedRef.current = false;
       disconnect();
     };
-  }, [directUrl, relayUrl]);
+  }, [disconnect]);
 
   return {
     connected,
